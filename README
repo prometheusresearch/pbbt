@@ -1,0 +1,171 @@
+********************************************
+  ``rrregress`` -- Regression test harness
+********************************************
+
+Overview
+========
+
+``rrregress`` is a regression test harness for *black-box testing*.  It
+is based on the idea that behavior of a complex system could be captured
+as a set of input/output pairs of a well-defined simple structure.
+
+::
+
+     input    +-----------+   output
+    --------> | Black Box | --------->
+              +-----------+
+
+Examples of of black-box testing are:
+
+1. A database system: the input is a SQL statement, the output is a
+   sequence of output records.
+2. A web application: the input is an HTTP request, the output if an
+   HTTP response.
+3. Black box testing of GUI applications is less obvious, but one
+   possible approach is: the input is a sequence of user actions, the
+   output is a screenshot of the application window.
+
+``rrregress`` is a toolkit which allows you to:
+
+* define your own test types;
+* provide a set of test cases using convenient and compact YAML format;
+* in the *train* mode, run the test cases and record expected output;
+* in the *check* mode, run the test cases and compare the produced
+  output with the expected output.
+
+*rrregress* is a free software released under MIT license.  *rrregress*
+is written by Kirill Simonov from Prometheus Research, LLC.
+
+
+Using ``rrregress``
+===================
+
+``rrregress`` is a Python library.  It's public API consists of a single
+function ``test()``::
+
+    from rrregress import test
+    test('input.yaml')
+
+Function ``test()`` takes the file with input test data as a parameter.
+
+``test(filename, ui=None, training=False)``
+    Loads a set of tests from ``filename`` and runs them.
+
+    ``filename``: ``str``
+        The name of the file containing test input data.
+    ``ui``: ``UI``
+        The object responsible for output and user interaction.
+    ``training``: ``bool``
+        If set, run the tests in the training mode.
+
+
+Input file format and predefined test types
+===========================================
+
+By default, ``rrregress`` supports a small set of predefined test types.
+Those include:
+
+* a test suite: a collection of test cases;
+* Python test;
+* Shell test;
+* File manipulation tests.
+
+A test case is a record with a specific set of fields.  Some fields
+are mandatory; some could be omitted.
+
+Test Suite
+----------
+
+A test suite is a collection of test cases.
+
+Fields:
+
+``title``: ``str``
+    The title of the suite
+``id``: ``str``
+    The identifier of the suite.  If not set, generated from the title.
+``tests``: ``listof(TestRecord)``
+    List of nested test cases.
+
+Include
+-------
+
+Loads test data from another file.
+
+Fields:
+
+``include``: ``str``
+    The file to load.
+
+Python
+------
+
+Executes Python code.
+
+Fields:
+
+``py``: ``str``
+    Either the file name or Python code to execute.
+``except``: ``str``
+    If set, indicates that the code is expected to produce an exception.
+
+Shell
+-----
+
+Executes a shell command.
+
+Fields:
+
+``sh``: ``oneof(str, listof(str))``
+    The shell command.
+``exit``: ``int``
+    The expected exit code; ``0`` by default.
+
+
+Defining new test types
+=======================
+
+You can define your own test types using ``test_case`` decorator
+and ``test_field`` descriptor:
+
+    @test_case
+    class MyTestCase(object):
+
+        class Input:
+            name = test_field(str)
+            # More fields...
+
+        class Output:
+            name = test_field(str)
+            # More fields...
+
+        def __init__(self, ctl, input, output):
+            self.ctl = ctl
+            self.input = input
+            self.output = output
+
+        def __call__(self):
+            # Runs the test with the given input and expected output.
+            # On success, returns new output record.
+
+
+Reference
+=========
+
+``TestCtl``
+    Test controller.
+
+``UI``
+    Output and user interface.
+
+``TestRecord``
+    Input or output record.
+
+``test_case``
+    Defines a new test type.
+
+``test_field()``
+    Defines a field of an input or output record.
+
+
+.. vim: set spell spelllang=en textwidth=72:

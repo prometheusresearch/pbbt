@@ -1,0 +1,51 @@
+#
+# Copyright (c) 2013, Prometheus Research, LLC
+# Released under MIT license, see `LICENSE` for details.
+#
+
+
+from setuptools import setup, find_packages
+
+
+NAME = "rrregress"
+VERSION = "0.1.1"
+DESCRIPTION = """Regression test harness"""
+LONG_DESCRIPTION = open('README', 'r').read()
+AUTHOR = """Kirill Simonov (Prometheus Research, LLC)"""
+AUTHOR_EMAIL = "xi@resolvent.net"
+LICENSE = "MIT"
+URL = "http://bitbucket.org/prometheus/rrregress"
+DOWNLOAD_URL = "http://pypi.python.org/pypi/rrregress"
+CLASSIFIERS = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 2",
+#    "Programming Language :: Python :: 3",
+    "Topic :: Utilities",
+]
+PACKAGES = find_packages('src')
+PACKAGE_DIR = {'': 'src'}
+INSTALL_REQUIRES = ['PyYAML']
+ENTRY_POINTS = {}
+USE_2TO3 = True
+
+
+setup(name=NAME,
+      version=VERSION,
+      description=DESCRIPTION,
+      author=AUTHOR,
+      license=LICENSE,
+      url=URL,
+      download_url=DOWNLOAD_URL,
+      classifiers=CLASSIFIERS,
+      packages=PACKAGES,
+      package_dir=PACKAGE_DIR,
+      install_requires=INSTALL_REQUIRES,
+      entry_points=ENTRY_POINTS,
+      use_2to3=USE_2TO3)
+
+

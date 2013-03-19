@@ -1,0 +1,13 @@
+syntax: glob
+*.pyc
+*.pyo
+*.orig
+.*.sw?
+*.egg-info
+*.env
+*.sqlite
+build
+vm-build
+external
+vendor
+sandbox
