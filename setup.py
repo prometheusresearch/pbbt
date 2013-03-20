@@ -7,15 +7,15 @@
 from setuptools import setup, find_packages
 
 
-NAME = "rrregress"
+NAME = "pbbt"
 VERSION = "0.1.1"
-DESCRIPTION = """Regression test harness"""
+DESCRIPTION = """Pluggable Black-Box Testing toolkit"""
 LONG_DESCRIPTION = open('README', 'r').read()
 AUTHOR = """Kirill Simonov (Prometheus Research, LLC)"""
 AUTHOR_EMAIL = "xi@resolvent.net"
 LICENSE = "MIT"
-URL = "http://bitbucket.org/prometheus/rrregress"
-DOWNLOAD_URL = "http://pypi.python.org/pypi/rrregress"
+URL = "http://bitbucket.org/prometheus/pbbt"
+DOWNLOAD_URL = "http://pypi.python.org/pypi/pbbt"
 CLASSIFIERS = [
     "Development Status :: 2 - Pre-Alpha",
     "Environment :: Console",

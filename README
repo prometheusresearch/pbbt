@@ -1,11 +1,11 @@
-********************************************
-  ``rrregress`` -- Regression test harness
-********************************************
+***********************************************
+  PBBT -- Pluggable Black-Box Testing toolkit
+***********************************************
 
 Overview
 ========
 
-``rrregress`` is a regression test harness for *black-box testing*.  It
+PBBT is a regression test harness for *black-box testing*.  It
 is based on the idea that behavior of a complex system could be captured
 as a set of input/output pairs of a well-defined simple structure.
 
@@ -25,7 +25,7 @@ Examples of of black-box testing are:
    possible approach is: the input is a sequence of user actions, the
    output is a screenshot of the application window.
 
-``rrregress`` is a toolkit which allows you to:
+PBBT allows you to:
 
 * define your own test types;
 * provide a set of test cases using convenient and compact YAML format;
@@ -33,17 +33,17 @@ Examples of of black-box testing are:
 * in the *check* mode, run the test cases and compare the produced
   output with the expected output.
 
-*rrregress* is a free software released under MIT license.  *rrregress*
-is written by Kirill Simonov from Prometheus Research, LLC.
+PBBT is a free software released under MIT license.  PBBT is written by
+Kirill Simonov from Prometheus Research, LLC.
 
 
-Using ``rrregress``
-===================
+Using PBBT
+==========
 
-``rrregress`` is a Python library.  It's public API consists of a single
-function ``test()``::
+PBBT is a Python library.  It's public API consists of a single function
+``test()``::
 
-    from rrregress import test
+    from pbbt import test
     test('input.yaml')
 
 Function ``test()`` takes the file with input test data as a parameter.
@@ -62,7 +62,7 @@ Function ``test()`` takes the file with input test data as a parameter.
 Input file format and predefined test types
 ===========================================
 
-By default, ``rrregress`` supports a small set of predefined test types.
+By default, PBBT supports a small set of predefined test types.
 Those include:
 
 * a test suite: a collection of test cases;
@@ -126,7 +126,7 @@ Defining new test types
 =======================
 
 You can define your own test types using ``test_case`` decorator
-and ``test_field`` descriptor:
+and ``test_field`` descriptor::
 
     @test_case
     class MyTestCase(object):

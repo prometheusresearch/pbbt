@@ -29,7 +29,7 @@ class TestCaseMixin(object):
     def __call__(self):
         if self.skipped():
             return self.output
-        self.header()
+        self.start()
         if self.ctl.training:
             return self.train()
         else:
@@ -65,7 +65,7 @@ class TestCaseMixin(object):
                     self.ctl.halts("unexpected exception occurred")
                     return True
 
-    def header(self):
+    def start(self):
         lines = []
         if self.Input.__fields__:
             attr = self.Input.__fields__[0].attr
@@ -74,6 +74,7 @@ class TestCaseMixin(object):
                 text = " ".join(str(item) for item in value)
             else:
                 text = str(value)
+            text = "%s: %s" % (attr.upper(), text)
             lines.append(text)
         location = locate(self.input)
         if location is not None:
@@ -235,8 +236,8 @@ class SuiteCase(TestCaseMixin):
         finally:
             self.ctl.restore_state()
 
-    def header(self):
-        lines = [self.input.title]
+    def start(self):
+        lines = ["SUITE: "+self.input.title]
         location = locate(self.input)
         if location is not None:
             lines.append("(%s)" % location)
@@ -346,7 +347,7 @@ class IncludeCase(TestCaseMixin):
             output = self.Output(include=self.input.include,
                                  output=new_output)
         else:
-            new_output = self.output
+            output = self.output
         return output
 
 
@@ -384,6 +385,14 @@ class PythonCase(RunAndCompareMixin):
         @property
         def id(self):
             return self.py
+
+    def start(self):
+        lines = ["PYTHON: "+self.input.id]
+        location = locate(self.input)
+        if location is not None:
+            lines.append("(%s)" % location)
+        self.ui.section()
+        self.ui.header(*lines)
 
     def run(self):
         filename = self.input.filename
