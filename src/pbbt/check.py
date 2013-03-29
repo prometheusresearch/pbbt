@@ -5,6 +5,7 @@
 
 
 class check(object):
+    """Pseudo-type for ``isinstance()`` checks."""
 
     def __instanceheck__(self, data):
         return False
@@ -18,6 +19,7 @@ class check(object):
 
 
 class maybe(check):
+    """The given type or ``None``."""
 
     def __init__(self, check):
         self.check = check
@@ -31,6 +33,7 @@ class maybe(check):
 
 
 class oneof(check):
+    """One of the given types."""
 
     def __init__(self, *checks):
         self.checks = checks
@@ -45,6 +48,7 @@ class oneof(check):
 
 
 class choiceof(check):
+    """A value from the given list of choices."""
 
     def __init__(self, values):
         self.values = values
@@ -58,9 +62,11 @@ class choiceof(check):
 
 
 class listof(check):
+    """List of items of the given type."""
 
-    def __init__(self, item_check):
+    def __init__(self, item_check, length=None):
         self.item_check = item_check
+        self.length = length
 
     def __instancecheck__(self, data):
         return (isinstance(data, list) and
@@ -68,37 +74,47 @@ class listof(check):
 
     @property
     def __name__(self):
-        return "listof(%s)" % self.item_check.__name__
+        if self.length is not None:
+            return "listof(%s, length=%s)" \
+                    % (self.item_check.__name__, self.length)
+        else:
+            return "listof(%s)" % self.item_check.__name__
+
+
+class tupleof(check):
+    """Tuple with fields of the given types."""
+
+    def __init__(self, *checks):
+        self.checks = checks
+
+    def __instancecheck__(self, data):
+        return (isinstance(data, tuple) and
+                len(data) == len(self.checks) and
+                all(isinstance(item, check)
+                    for item, check in zip(data, self.checks)))
+
+    @property
+    def __name__(self):
+        return "tupleof(%s)" % ", ".join(check.__name__
+                                         for check in self.checks)
 
 
 class dictof(check):
+    """Dictionary with keys and values of the given types."""
 
-    def __init__(self, key_check, item_check):
+    def __init__(self, key_check, value_check):
         self.key_check = key_check
-        self.item_check = item_check
+        self.value_check = value_check
 
     def __instancecheck__(self, data):
         return (isinstance(data, dict) and
-                all(isinstance(key, self.key_type) and
-                    isinstance(value[key], self.item_type)
+                all(isinstance(key, self.key_check) and
+                    isinstance(data[key], self.value_check)
                     for key in data))
 
     @property
     def __name__(self):
         return "dictof(%s, %s)" % (self.key_check.__name__,
-                                   self.item_check.__name__)
-
-
-class subclassof(check):
-
-    def __init__(self, class_type):
-        self.class_type = class_type
-
-    def __instancecheck__(self, data):
-        return (isinstance(data, type) and issubclass(data, self.class_type))
-
-    @property
-    def __name__(self):
-        return "subclassof(%s)" % self.class_type.__name__
+                                   self.value_check.__name__)
 
 

@@ -5,12 +5,269 @@
 
 
 from .core import TestRecord
-import weakref
+from .check import listof
 import re
+import os
+import weakref
 import yaml
 
 
+# Use fast LibYAML-based loader and serializer when available.
+try:
+    BaseYAMLLoader = yaml.CSafeLoader
+    BaseYAMLDumper = yaml.CSafeDumper
+except AttributeError:
+    BaseYAMLLoader = yaml.SafeLoader
+    BaseYAMLDumper = yaml.SafeDumper
+
+
+class TestLoader(BaseYAMLLoader):
+    """Reads test input/output data from a file."""
+
+    # A pattern to match `!substitute` nodes.
+    substitute_re = re.compile(r"""
+        \$ \{
+            (?P<name> [a-zA-Z_][0-9a-zA-Z_.-]*)
+            (?: : (?P<default> [0-9A-Za-z~@#^&*_;:,./?=+-]*) )?
+        \}
+    """, re.X)
+
+    def __init__(self, record_types, substitutes, stream):
+        super(TestLoader, self).__init__(stream)
+        # List of supported record types.
+        self.record_types = record_types
+        # Maps names to substitution values.
+        self.substitutes = substitutes
+        # Indicates that the next node is a test record.
+        self.expect_record = None
+        # Indicates that the next node is a sequence of test records.
+        self.expect_record_list = None
+
+    def __call__(self):
+        # Makes sure the YAML stream contains exactly one document and
+        # returns it.
+        self.expect_record = True
+        self.expect_record_list = False
+        return self.get_single_data()
+
+    def construct_object(self, node, deep=False):
+        # Overriden to generate better error messages.
+        if self.expect_record:
+            if not (isinstance(node, yaml.MappingNode) and
+                    node.tag == u"tag:yaml.org,2002:map"):
+                raise yaml.constructor.ConstructorError(None, None,
+                        "expected a test record", node.start_mark)
+        if self.expect_record_list:
+            if not (isinstance(node, yaml.SequenceNode) and
+                    node.tag == u"tag:yaml.org,2002:seq"):
+                raise yaml.constructor.ConstructorError(None, None,
+                        "expected a sequence of test records", node.start_mark)
+
+        data = super(TestLoader, self).construct_object(node, deep=deep)
+
+        if self.expect_record:
+            if not isinstance(data, TestRecord):
+                raise yaml.constructor.ConstructorError(None, None,
+                        "expected a test record", node.start_mark)
+
+        return data
+
+    def construct_yaml_str(self, node):
+        # Always return `!!str`` nodes as byte strings.
+        value = self.construct_scalar(node)
+        value = value.encode('utf-8')
+        return value
+
+    def construct_yaml_seq(self, node):
+        if not self.expect_record_list:
+            return super(TestLoader, self).construct_yaml_seq(node)
+
+        # Construct a list of test records.
+        if not (isinstance(node, yaml.SequenceNode) and
+                node.tag == u"tag:yaml.org,2002:seq"):
+            raise yaml.constructor.ConstructorError(None, None,
+                    "expected a sequence of test records", node.start_mark)
+        self.expect_record = True
+        self.expect_record_list = False
+        data = []
+        for item in node.value:
+            data.append(self.construct_object(item, deep=True))
+        self.expect_record = False
+        self.expect_record_list = True
+        return data
+
+    def construct_yaml_map(self, node):
+        if not self.expect_record:
+            return super(TestLoader, self).construct_yaml_map(node)
+
+        # Construct a test record.
+
+        # Check if we got a correct node type.
+        if not (isinstance(node, yaml.MappingNode) and
+                node.tag == u"tag:yaml.org,2002:map"):
+            raise yaml.constructor.ConstructorError(None, None,
+                    "expected a test record", node.start_mark)
+
+        # Construct mapping keys.
+        keys = []
+        current_expect_record = self.expect_record
+        self.expect_record = False
+        for key_node, value_node in node.value:
+            key = self.construct_object(key_node, deep=True)
+            if not isinstance(key, str):
+                raise yaml.constructor.ConstructorError(
+                        "while constructing a test record", node.start_mark,
+                        "found invalid field", key_node.start_mark)
+            keys.append(key)
+        self.expect_record = current_expect_record
+
+        # Find a record class matching the set of keys.
+        detected_record_type = None
+        for record_type in self.record_types:
+            if record_type.__recognizes__(set(keys)):
+                detected_record_type = record_type
+                break
+        if detected_record_type is None:
+            if not keys:
+                raise yaml.constructor.ConstructorError(None, None,
+                        "expected a test record", node.start_mark)
+            field_list = ", ".join(repr(key) for key in keys)
+            if len(keys) == 1:
+                raise yaml.constructor.ConstructorError(None, None,
+                        "cannot find a test type with field %s" % field_list,
+                        node.start_mark)
+            else:
+                raise yaml.constructor.ConstructorError(None, None,
+                        "cannot find a test type with fields %s" % field_list,
+                        node.start_mark)
+
+        # Construct the record values; a hack to parse nested records.
+        mapping = {}
+        current_expect_record = self.expect_record
+        for key, (key_node, value_node) in zip(keys, node.value):
+            self.expect_record = False
+            self.expect_record_list = False
+            field = next((field for field in detected_record_type.__fields__
+                                if field.key == key), None)
+            if field is not None:
+                if field.check == TestRecord:
+                    self.expect_record = True
+                elif (isinstance(field.check, listof) and
+                        field.check.item_check == TestRecord):
+                    self.expect_record_list = True
+            value = self.construct_object(value_node, deep=True)
+            mapping[key] = value
+        self.expect_record = current_expect_record
+        self.expect_record_list = False
+
+        # Generate a record object.
+        try:
+            record = detected_record_type.__load__(mapping)
+        except ValueError, exc:
+            raise yaml.constructor.ConstructorError(None, None,
+                    str(exc), node.start_mark)
+
+        # Associate the record object with its position in the YAML stream.
+        location = Location(node.start_mark.name, node.start_mark.line+1)
+        set_location(record, location)
+
+        return record
+
+    def construct_substitute(self, node):
+        # Process `${...}` scalars.
+        value = self.construct_scalar(node)
+        value = value.encode('utf-8')
+        match = self.substitute_re.match(value)
+        if match is None:
+            raise yaml.constructor.ConstructorError(None, None,
+                    "invalid substitution", node.start_mark)
+        name = match.group('name')
+        default = match.group('default')
+        return self.substitutes.get(name, default)
+
+
+# Register custom constructors.
+TestLoader.add_constructor(
+        u'tag:yaml.org,2002:str', TestLoader.construct_yaml_str)
+TestLoader.add_constructor(
+        u'tag:yaml.org,2002:seq', TestLoader.construct_yaml_seq)
+TestLoader.add_constructor(
+        u'tag:yaml.org,2002:map', TestLoader.construct_yaml_map)
+TestLoader.add_constructor(
+        u'!substitute', TestLoader.construct_substitute)
+# Register a resolver for ``!substitute``.
+TestLoader.add_implicit_resolver(
+        u'!substitute', TestLoader.substitute_re, [u'$'])
+
+
+class TestDumper(BaseYAMLDumper):
+    """Saves test input/output data to a file"""
+
+    def __init__(self, stream, **keywords):
+        super(TestDumper, self).__init__(stream, **keywords)
+        # Check if the PyYAML version is suitable for dumping.
+        self.check_version()
+
+    def check_version(self):
+        # Different versions of PyYAML may produce slightly different output.
+        # To avoid this, we require a specific version of PyYAML/LibYAML.
+        try:
+            pyyaml_version = yaml.__version__
+        except AttributeError:
+            pyyaml_version = '3.05'
+        try:
+            import _yaml
+            libyaml_version = _yaml.get_version_string()
+        except ImportError:
+            libyaml_version = None
+        if pyyaml_version < '3.07':
+            raise ScriptError("PyYAML >= 3.07 is required"
+                              " to dump test output")
+        if libyaml_version is None:
+            raise ScriptError("PyYAML built with LibYAML bindings"
+                              " is required to dump test output")
+        if libyaml_version < '0.1.2':
+            raise ScriptError("LibYAML >= 0.1.2 is required"
+                              " to dump test output")
+
+    def __call__(self, data):
+        self.open()
+        self.represent(data)
+        self.close()
+
+    def represent_str(self, data):
+        # Overriden to force literal block style for multi-line strings.
+        tag = None
+        style = None
+        if data.endswith('\n'):
+            style = '|'
+        try:
+            data = data.decode('utf-8')
+            tag = u'tag:yaml.org,2002:str'
+        except UnicodeDecodeError:
+            data = data.encode('base64')
+            tag = u'tag:yaml.org,2002:binary'
+            style = '|'
+        return self.represent_scalar(tag, data, style=style)
+
+    def represent_record(self, data):
+        mapping = data.__dump__()
+        return self.represent_mapping(u'tag:yaml.org,2002:map', mapping,
+                                      flow_style=False)
+
+
+# Register custom serializers.
+TestDumper.add_representer(
+        str, TestDumper.represent_str)
+TestDumper.add_multi_representer(
+        TestRecord, TestDumper.represent_record)
+# Register a resolver for ``!substitute``.
+TestDumper.add_implicit_resolver(
+        u'!substitute', TestLoader.substitute_re, [u'$'])
+
+
 class Location(object):
+    """Position in a YAML document."""
 
     def __init__(self, filename, line):
         self.filename = filename
@@ -21,6 +278,7 @@ class Location(object):
 
 
 class LocationRef(weakref.ref):
+    """Weak reference from a record to its location."""
 
     __slots__ = ('oid', 'location')
 
@@ -42,245 +300,31 @@ class LocationRef(weakref.ref):
 
     @classmethod
     def locate(cls, record):
+        """Finds the record location."""
         ref = cls.oid_to_ref.get(id(record))
         if ref is not None:
             return ref.location
 
     @classmethod
-    def mark(cls, record, location):
+    def set_location(cls, record, location):
+        """Associates a record with its location."""
         cls(record, location)
         return record
 
 
-# The base classes for the YAML loaders and dumpers.  When available,
-# use the fast, LibYAML-based variants, if not, use the slow pure-Python
-# versions.
-BaseYAMLLoader = yaml.SafeLoader
-if hasattr(yaml, 'CSafeLoader'):
-    BaseYAMLLoader = yaml.CSafeLoader
-BaseYAMLDumper = yaml.SafeDumper
-if hasattr(yaml, 'CSafeDumper'):
-    BaseYAMLDumper = yaml.CSafeDumper
-
-
-class TestLoader(BaseYAMLLoader):
-
-    # A pattern to match substitution variables in `!environ` nodes.
-    environ_re = re.compile(r"""
-        \$ \{
-            (?P<name> [a-zA-Z_][0-9a-zA-Z_.-]*)
-            (?: : (?P<default> [0-9A-Za-z~@#^&*_;:,./?=+-]*) )?
-        \}
-    """, re.X)
-
-    def __init__(self, record_types, stream):
-        super(TestLoader, self).__init__(stream)
-        self.record_types = record_types
-
-    def __call__(self):
-        # That ensures the stream contains one document, parses it and
-        # returns the corresponding object.
-        return self.get_single_data()
-
-    def construct_document(self, node):
-        # We override this to ensure that any produced document is
-        # a test record of expected type.
-        data = super(TestLoader, self).construct_document(node)
-        if not isinstance(data, TestRecord):
-            raise yaml.constructor.ConstructorError(None, None,
-                    "unexpected document type", node.start_mark)
-        return data
-
-    def construct_yaml_str(self, node):
-        # Always convert a `!!str` scalar node to a byte string.
-        # By default, PyYAML converts an `!!str`` node containing non-ASCII
-        # characters to a Unicode string.
-        value = self.construct_scalar(node)
-        value = value.encode('utf-8')
-        return value
-
-    def construct_yaml_map(self, node):
-        # Detect if a node represent test data and convert it to a test record.
-
-        # We assume that the node represents a test record if it contains
-        # all mandatory keys of the record class.  Otherwise, we assume it
-        # is a regular dictionary.
-        #
-        # It would be preferable to perform this detection on the tag
-        # resolution phase.  However this phase does not give us access
-        # to the mapping keys, so we have no choice but do it during the
-        # construction phase.
-
-        # Check if we got a mapping node.
-        if not isinstance(node, yaml.MappingNode):
-            raise yaml.constructor.ConstructorError(None, None,
-                    "expected a mapping node, but found %s" % node.id,
-                    node.start_mark)
-
-        # Convert the key and the value nodes.
-        mapping = {}
-        for key_node, value_node in node.value:
-            key = self.construct_object(key_node, deep=True)
-            try:
-                hash(key)
-            except TypeError, exc:
-                raise yaml.constructor.ConstructorError(
-                        "while constructing a mapping",
-                        node.start_mark,
-                        "found unacceptable key (%s)" % exc,
-                        key_node.start_mark)
-            value = self.construct_object(value_node, deep=True)
-            mapping[key] = value
-
-        # Find a record class such that the node contains all
-        # the mandatory record fields.
-        detected_record_type = None
-        for record_type in self.record_types:
-            if record_type.__detects__(mapping):
-                detected_record_type = record_type
-                break
-
-        # If we can't find a suitable record class, it must be a regular
-        # dictionary.
-        if detected_record_type is None:
-            return mapping
-
-        # Check that the node does not contain any keys other than
-        # the record fields.
-        try:
-            record = detected_record_type.__load__(mapping)
-        except ValueError, exc:
-            raise yaml.constructor.ConstructorError(None, None,
-                    str(exc), node.start_mark)
-
-        # Record where the node was found.
-        location = Location(node.start_mark.name, node.start_mark.line+1)
-        LocationRef.mark(record, location)
-
-        return record
-
-    def construct_environ(self, node):
-        # Substitute environment variables in `!environ` scalars.
-
-        def replace(match):
-            # Substitute environment variables with values.
-            name = match.group('name')
-            default = match.group('default') or ''
-            value = os.environ.get(name, default)
-            if not self.environ_value_regexp.match(value):
-                raise yaml.constructor.ConstructorError(None, None,
-                        "invalid value of environment variable %s: %r"
-                        % (name, value), node.start_mark)
-            return value
-
-        # Get the scalar value and replace all ${...} occurences with
-        # values of respective environment variables.
-        value = self.construct_scalar(node)
-        value = value.encode('utf-8')
-        value = self.environ_regexp.sub(replace, value)
-
-        # Blank values are returned as `None`.
-        if not value:
-            return None
-        return value
-
-
-# Register custom constructors for `!!str``, `!!map`` and ``!environ``.
-TestLoader.add_constructor(
-        u'tag:yaml.org,2002:str',
-        TestLoader.construct_yaml_str)
-TestLoader.add_constructor(
-        u'tag:yaml.org,2002:map',
-        TestLoader.construct_yaml_map)
-TestLoader.add_constructor(
-        u'!environ',
-        TestLoader.construct_environ)
-
-
-# Register a resolver for ``!environ``.
-TestLoader.add_implicit_resolver(
-        u'!environ', TestLoader.environ_re, [u'$'])
-
-
-class TestDumper(BaseYAMLDumper):
-
-    def __init__(self, stream, **keywords):
-        super(TestDumper, self).__init__(stream, **keywords)
-        # Check if the PyYAML version is suitable for dumping.
-        self.check_version()
-
-    def check_version(self):
-        # We require PyYAML >= 3.07 built with LibYAML >= 0.1.2 to dump
-        # YAML data.  Other versions may produce slightly different output.
-        # Since the YAML files may be kept in a VCS repository, we don't
-        # want minor formatting changes generate unnecessarily large diffs.
-        try:
-            pyyaml_version = yaml.__version__
-        except AttributeError:
-            pyyaml_version = '3.05'
-        try:
-            import _yaml
-            libyaml_version = _yaml.get_version_string()
-        except ImportError:
-            libyaml_version = None
-        if pyyaml_version < '3.07':
-            raise ScriptError("PyYAML >= 3.07 is required"
-                              " to dump test output")
-        if libyaml_version is None:
-            raise ScriptError("PyYAML built with LibYAML bindings"
-                              " is required to dump test output")
-        if libyaml_version < '0.1.2':
-            raise ScriptError("LibYAML >= 0.1.2 is required"
-                              " to dump test output")
-
-    def __call__(self, data):
-        """
-        Dumps the data to the YAML stream.
-        """
-        self.open()
-        self.represent(data)
-        self.close()
-
-    def represent_str(self, data):
-        # Serialize a string.  We override the default string serializer
-        # to use the literal block style for multi-line strings.
-        tag = None
-        style = None
-        if data.endswith('\n'):
-            style = '|'
-        try:
-            data = data.decode('utf-8')
-            tag = u'tag:yaml.org,2002:str'
-        except UnicodeDecodeError:
-            data = data.encode('base64')
-            tag = u'tag:yaml.org,2002:binary'
-            style = '|'
-        return self.represent_scalar(tag, data, style=style)
-
-    def represent_record(self, data):
-        # Extract the fields skipping those with the default value.
-        mapping = data.__dump__()
-        # Generate a mapping node.
-        return self.represent_mapping(u'tag:yaml.org,2002:map', mapping,
-                                      flow_style=False)
-
-
-TestDumper.add_representer(
-        str, TestDumper.represent_str)
-TestDumper.add_multi_representer(
-        TestRecord, TestDumper.represent_record)
-
-
+set_location = LocationRef.set_location
 locate = LocationRef.locate
 
 
-def load(filename, record_types):
+def load(filename, record_types, substitutes={}):
+    """Loads test input/output data from a file."""
     stream = open(filename, 'r')
-    loader = TestLoader(record_types, stream)
+    loader = TestLoader(record_types, substitutes, stream)
     return loader()
 
 
 def dump(filename, record):
+    """Saves test output data to a file."""
     stream = open(filename, 'w')
     dumper = TestDumper(stream)
     return dumper(record)

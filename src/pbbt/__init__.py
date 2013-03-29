@@ -9,8 +9,8 @@ from .ctl import TestCtl
 from .std import TestCaseMixin, RunAndCompareMixin
 
 
-def test(filename, ui=None, training=False):
-    ctl = TestCtl(ui=ui, training=training)
+def test(filename, **configuration):
+    ctl = TestCtl(**configuration)
     return ctl(filename)
 
 
