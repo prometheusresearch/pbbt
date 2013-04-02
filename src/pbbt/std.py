@@ -17,7 +17,7 @@ import traceback
 import difflib
 
 
-def is_attr(text, attr_re=re.compile(r'^[A-Za-z_][0-9A-Za-z_]*$')):
+def is_attribute(text, attr_re=re.compile(r'^[A-Za-z_][0-9A-Za-z_]*$')):
     return (attr_re.match(text) is not None)
 
 
@@ -26,8 +26,8 @@ def is_filename(text,
     return (filename_re.match(text) is not None)
 
 
-def to_id(text, trim_re=re.compile(r'^[\W_]+|[\W_]+$'),
-                norm_re=re.compile(r'(?:[^\w.]|_)+')):
+def to_identifier(text, trim_re=re.compile(r'^[\W_]+|[\W_]+$'),
+                        norm_re=re.compile(r'(?:[^\w.]|_)+')):
     for line in text.splitlines():
         line = norm_re.sub('-', trim_re.sub('', line)).lower()
         if line:
@@ -35,7 +35,6 @@ def to_id(text, trim_re=re.compile(r'^[\W_]+|[\W_]+$'),
     return '-'
 
 
-@test_type
 class TestCaseMixin(object):
 
     class Input:
@@ -65,37 +64,32 @@ class TestCaseMixin(object):
     def skipped(self):
         if self.input.skip:
             return True
-        for condition, result in [(self.input.if_, True),
+        for condition, expect in [(self.input.if_, True),
                                   (self.input.unless, False)]:
             if condition is None:
                 continue
-            if isinstance(condition, str) and is_attr(condition):
+            if isinstance(condition, str) and is_attribute(condition):
                 condition = [condition]
             if isinstance(condition, list):
-                if any(self.ctl.state.get(key) for key in condition) is not result:
-                    return True
+                check = any(self.ctl.state.get(key) for key in condition)
             else:
                 try:
-                    if eval(condition, self.state):
-                        if not result:
-                            return True
-                    else:
-                        if result:
-                            return True
+                    check = bool(eval(condition, self.state))
                 except:
-                    lines = traceback.format_exc().splitlines()
-                    self.ui.literal(*lines)
-                    self.ctl.halt("unexpected exception occurred")
+                    self.ui.literal(traceback.format_exc())
+                    self.ctl.halt("unexpected exception occurred "
+                                  "when evaluating %r" % condition)
                     return True
+            if check != expect:
+                return True
 
     def start(self):
-        lines = []
-        lines.extend(str(self.input).splitlines())
+        lines = [str(self.input)]
         location = locate(self.input)
         if location is not None:
             lines.append("(%s)" % location)
         self.ui.section()
-        self.ui.header(*lines)
+        self.ui.header("\n".join(lines))
 
     def check(self):
         raise NotImplementedError("%s.check()" % self.__class__.__name__)
@@ -104,7 +98,6 @@ class TestCaseMixin(object):
         return self.check()
 
 
-@test_type
 class RunAndCompareMixin(TestCaseMixin):
 
     class Input:
@@ -126,60 +119,56 @@ class RunAndCompareMixin(TestCaseMixin):
     def render(self, output):
         raise NotImplementedError("%s.render()" % self.__class__.__name__)
 
-    def differs(self, text, new_text):
-        text = self.normalize(text)
-        new_text = self.normalize(new_text)
-        return (text != new_text)
-
-    def normalize(self, text):
+    def sanitize(self, text):
         if self.input.ignore is True:
             return ""
         if not self.input.ignore:
             return text
         ignore_re = re.compile(self.input.ignore, re.X|re.M)
-        def replace(match):
-            if ignore_re.groups:
-                spans = []
-                group_start = match.start()
-                for idx in range(1, ignore_re.groups+1):
-                    start, end = match.span(idx)
-                    if start < end:
-                        spans.append((end-group_start, start-group_start))
-                spans.sort()
-                spans.reverse()
-                group = match.group()
-                last_cut = len(group)
-                for end, start in spans:
-                    end = min(end, last_cut)
-                    if start >= end:
-                        continue
-                    group = group[:start]+group[end:]
-                    last_cut = start
-                return group
-            else:
-                return ""
-        text = ignore_re.sub(replace, text)
+        text = ignore_re.sub(self._sanitize_replace, text)
         return text
 
-    def show(self, text, new_text):
+    @staticmethod
+    def _sanitize_replace(match):
+        if not match.re.groups:
+            return ""
+        spans = []
+        group_start = match.start()
+        for idx in range(match.re.groups):
+            start, end = match.span(idx+1)
+            if start < end:
+                start -= group_start
+                end -= group_start
+                spans.append((end, start))
+        spans.sort()
+        spans.reverse()
+        text = match.group()
+        last_cut = len(text)
+        for end, start in spans:
+            end = min(end, last_cut)
+            if start >= end:
+                continue
+            text = text[:start]+text[end:]
+            last_cut = start
+        return text
+
+    def display(self, text, new_text):
         if text is None:
-            self.ui.notice("test output is new")
-        elif text != new_text:
-            self.ui.notice("test output has changed")
-        else:
+            self.ui.notice("new test output")
+            self.ui.literal(new_text)
+        elif text == new_text:
             self.ui.notice("test output has not changed")
-        if text is None or text == new_text:
-            lines = new_text.splitlines()
         else:
             diff = difflib.unified_diff(text.splitlines(),
                                         new_text.splitlines(),
                                         n=2, lineterm='')
             lines = list(diff)[2:]
-        self.ctl.ui.literal(*lines)
+            self.ui.notice("test output has changed")
+            self.ui.literal("\n".join(lines))
 
     def check(self):
         if self.output is None:
-            self.ctl.failed("no output data found")
+            self.ctl.failed("cannot find expected test output")
             return
         new_output = self.run()
         if new_output is None:
@@ -187,8 +176,8 @@ class RunAndCompareMixin(TestCaseMixin):
             return
         text = self.render(self.output)
         new_text = self.render(new_output)
-        if self.differs(text, new_text):
-            self.show(text, new_text)
+        if self.sanitize(text) != self.sanitize(new_text):
+            self.display(text, new_text)
             self.ctl.failed("unexpected test output")
             return
         self.ctl.passed()
@@ -197,17 +186,16 @@ class RunAndCompareMixin(TestCaseMixin):
         new_output = self.run()
         if new_output is None:
             self.ctl.failed()
-            reply = self.ui.choice(('', "halt"), ('c', "continue"))
+            reply = self.ui.choice(None, ('', "halt"), ('c', "continue"))
             if reply == '':
                 self.ctl.halt()
             return self.output
-        text = None
-        if self.output is not None:
-            text = self.render(self.output)
+        text = self.render(self.output) if self.output is not None else None
         new_text = self.render(new_output)
-        if text is None or self.differs(text, new_text):
-            self.show(text, new_text)
-            reply = self.ui.choice(('', "record"), ('s', "skip"), ('h', "halt"))
+        if text is None or self.sanitize(text) != self.sanitize(new_text):
+            self.display(text, new_text)
+            reply = self.ui.choice(None,
+                    ('', "record"), ('s', "skip"), ('h', "halt"))
             if reply == '':
                 self.ctl.updated()
                 return new_output
@@ -223,7 +211,8 @@ class RunAndCompareMixin(TestCaseMixin):
 class SetCase(TestCaseMixin):
 
     class Input:
-        set_ = test_field(oneof(str, dictof(str, object)))
+        set_ = test_field(oneof(str, dictof(str, object)),
+                          hint="set a conditional variable")
 
     def check(self):
         if isinstance(self.input.set_, str):
@@ -236,10 +225,14 @@ class SetCase(TestCaseMixin):
 class SuiteCase(TestCaseMixin):
 
     class Input:
-        suite = test_field(str, default=None)
-        title = test_field(str)
-        output = test_field(str, default=None)
-        tests = test_field(listof(TestRecord))
+        suite = test_field(str, default=None,
+                           hint="suite identifier")
+        title = test_field(str,
+                           hint="suite title")
+        output = test_field(str, default=None,
+                            hint="file with expected output")
+        tests = test_field(listof(TestRecord),
+                           hint="list of test inputs")
 
         @classmethod
         def __recognizes__(cls, keys):
@@ -248,7 +241,7 @@ class SuiteCase(TestCaseMixin):
         @classmethod
         def __load__(cls, mapping):
             if 'suite' not in mapping and 'title' in mapping:
-                mapping['suite'] = to_id(mapping['title'])
+                mapping['suite'] = to_identifier(mapping['title'])
             return super(SuiteCase.Input, cls).__load__(mapping)
 
         def __complements__(self, other):
@@ -260,23 +253,29 @@ class SuiteCase(TestCaseMixin):
             return self.title
 
     class Output:
-        suite = test_field(str)
-        tests = test_field(listof(TestRecord))
+        suite = test_field(str,
+                           hint="suite identifier")
+        tests = test_field(listof(TestRecord),
+                           hint="list of test outputs")
 
     def __init__(self, ctl, input, output):
         super(SuiteCase, self).__init__(ctl, input, output)
 
     def __call__(self):
-        self.ctl.save_state()
+        if self.input.suite not in self.ctl.tree:
+            return self.output
+        self.ctl.tree.descend(self.input.suite)
+        self.ctl.state.save()
         try:
             return super(SuiteCase, self).__call__()
         finally:
-            self.ctl.restore_state()
+            self.ctl.state.restore()
+            self.ctl.tree.ascend()
 
     def load(self):
         if self.input.output is not None and os.path.exists(self.input.output):
             output = self.ctl.load_output(self.input.output)
-            if isinstance(output, SuiteCase.Output):
+            if self.input.__complements__(output):
                 return output
         return self.output
 
@@ -300,12 +299,12 @@ class SuiteCase(TestCaseMixin):
         return cases
 
     def start(self):
-        lines = [str(self.input)]
+        lines = ["%s [%s]" % (self.input, self.ctl.tree.identify())]
         location = locate(self.input)
         if location is not None:
             lines.append("(%s)" % location)
         self.ui.part()
-        self.ui.header(*lines)
+        self.ui.header("\n".join(lines))
 
     def check(self):
         output = self.load()
@@ -343,7 +342,7 @@ class SuiteCase(TestCaseMixin):
             case_output_index = {}
             for idx, case_output in enumerate(tests):
                 case_output_index[id(case_output)] = idx
-            new_idx = 0
+            next_idx = 0
             for case in cases:
                 if case in new_case_output_map:
                     new_case_output = new_case_output_map[case]
@@ -351,15 +350,15 @@ class SuiteCase(TestCaseMixin):
                         if id(case.output) in case_output_index:
                             idx = case_output_index[id(case.output)]
                             updates.append((idx, new_case_output))
-                            if idx >= new_idx:
-                                new_idx = idx+1
+                            if idx >= next_idx:
+                                next_idx = idx+1
                         else:
-                            inserts.append((new_idx, new_case_output))
-                            new_idx += 1
+                            inserts.append((next_idx, new_case_output))
+                            next_idx += 1
                 else:
                     if id(case.output) in case_output_index:
                         idx = case_output_index[id(case.output)]
-                        new_idx = idx+1
+                        next_idx = idx+1
             for idx, case_output in updates:
                 tests[idx] = case_output
             for idx, case_output in reversed(sorted(inserts)):
@@ -374,8 +373,8 @@ class SuiteCase(TestCaseMixin):
 
         if self.input.output is not None:
             if output is self.output or output != new_output:
-                reply = self.ui.choice(('', "save changes"),
-                                       ('d', "discard changes"))
+                reply = self.ui.choice(None, ('', "save changes"),
+                                             ('d', "discard changes"))
                 if reply == 'd':
                     return self.output
                 self.ui.notice("saving test output to %r" % self.input.output)
@@ -389,11 +388,14 @@ class SuiteCase(TestCaseMixin):
 class IncludeCase(TestCaseMixin):
 
     class Input:
-        include = test_field(str)
+        include = test_field(str,
+                             hint="file with tests")
 
     class Output:
-        include = test_field(str)
-        output = test_field(TestRecord)
+        include = test_field(str,
+                             hint="file with tests")
+        output = test_field(TestRecord,
+                            hint="expected output")
 
     def load(self):
         included_input = self.ctl.load_input(self.input.include)
@@ -405,19 +407,23 @@ class IncludeCase(TestCaseMixin):
         case = case_type(self.ctl, included_input, included_output)
         return case
 
+    def start(self):
+        pass
+
     def check(self):
         case = self.load()
         self.ctl.run(case)
 
     def train(self):
         case = self.load()
-        new_output = self.ctl.run(case)
-        if new_output is None:
+        new_case_output = self.ctl.run(case)
+        if new_case_output is None:
             output = None
-        elif new_output != case.output:
-            output = self.Output(include=self.input.include, output=new_output)
-        else:
+        elif new_case_output == case.output:
             output = self.output
+        else:
+            output = self.Output(include=self.input.include,
+                                 output=new_case_output)
         return output
 
 
@@ -425,39 +431,61 @@ class IncludeCase(TestCaseMixin):
 class PythonCase(RunAndCompareMixin):
 
     class Input:
-        py = test_field(str)
-        stdin = test_field(str, default='')
-        except_ = test_field(str, default=None)
+        py = test_field(str,
+                        hint="file name or source code")
+        stdin = test_field(str, default='',
+                           hint="standard input")
+        except_ = test_field(str, default=None,
+                             hint="expected exception name")
+
+        @property
+        def py_key(self):
+            if is_filename(self.py):
+                return self.py
+            else:
+                return to_identifier(self.py)
+
+        @property
+        def py_as_filename(self):
+            if is_filename(self.py):
+                return self.py
+
+        @property
+        def py_as_source(self):
+            if not is_filename(self.py):
+                return self.py
 
         def __complements__(self, other):
             if not isinstance(other, PythonCase.Output):
                 return False
-            if is_filename(self.py):
-                return (self.py == other.py)
-            else:
-                return (to_id(self.py) == to_id(other.py))
+            return (self.py_key == other.py_key)
 
         def __str__(self):
-            if is_filename(self.py):
-                return "PY: %s" % self.py
-            else:
-                return "PY: %s" % to_id(self.py)
+            return "PY: %s" % self.py_key
 
     class Output:
-        py = test_field(str)
-        stdout = test_field(str)
+        py = test_field(str,
+                        hint="file name or source code identifier")
+        stdout = test_field(str,
+                            hint="expected standard output")
+
+        @property
+        def py_key(self):
+            if is_filename(self.py):
+                return self.py
+            else:
+                return to_identifier(self.py)
 
     def run(self):
-        if is_filename(self.input.py):
-            py_id = self.input.py
+        filename = self.input.py_as_filename
+        if filename is not None:
             try:
-                source = open(self.input.py, 'rb')
+                source = open(filename, 'rb')
             except IOError:
-                self.ui.notice("missing file %r" % self.input.py)
+                self.ui.warning("missing file %r" % source)
                 return
         else:
-            py_id = to_id(self.input.py)
-            source = self.input.py
+            source = self.input.py_as_source
         old_stdin = sys.stdin
         old_stdout = sys.stdout
         old_stderr = sys.stderr
@@ -477,23 +505,21 @@ class PythonCase(RunAndCompareMixin):
             sys.stdin = old_stdin
             sys.stdout = old_stdout
             sys.stderr = old_stderr
-        new_output = self.Output(py=py_id, stdout=stdout)
+        new_output = self.Output(py=self.input.py_key, stdout=stdout)
         if exc_info is not None:
             exc_name = exc_info[0].__name__
             if self.input.except_ is None or self.input.except_ != exc_name:
-                lines = traceback.format_exception(*exc_info)
-                lines = "".join(lines).splitlines()
-                self.ui.notice("unexpected exception occured")
                 if stdout:
-                    self.ui.literal(*stdout.splitlines())
-                self.ui.literal(*lines)
+                    self.ui.literal(stdout)
+                self.ui.literal("".join(traceback.format_exception(*exc_info)))
+                self.ui.warning("unexpected exception occured")
                 return
         else:
             if self.input.except_ is not None:
-                self.ui.notice("exception %r did not occur"
-                               % self.input.except_)
                 if stdout:
-                    self.ui.literal(*stdout.splitlines())
+                    self.ui.literal(stdout)
+                self.ui.warning("expected exception %r did not occur"
+                                % self.input.except_)
                 return
         return new_output
 
@@ -505,11 +531,16 @@ class PythonCase(RunAndCompareMixin):
 class ShellCase(RunAndCompareMixin):
 
     class Input:
-        sh = test_field(oneof(str, listof(str)))
-        cd = test_field(str, default=None)
-        environ = test_field(dictof(str, str), default=None)
-        stdin = test_field(str, default='')
-        exit = test_field(int, default=0)
+        sh = test_field(oneof(str, listof(str)),
+                        hint="command line")
+        cd = test_field(str, default=None,
+                        hint="working directory")
+        environ = test_field(dictof(str, str), default=None,
+                             hint="environment variables")
+        stdin = test_field(str, default='',
+                           hint="standard input")
+        exit = test_field(int, default=0,
+                          hint="expected exit code")
 
         def __str__(self):
             if isinstance(self.sh, str):
@@ -518,8 +549,10 @@ class ShellCase(RunAndCompareMixin):
                 return "SH: %s" % " ".join(self.sh)
 
     class Output:
-        sh = test_field(oneof(str, listof(str)))
-        stdout = test_field(str)
+        sh = test_field(oneof(str, listof(str)),
+                        hint="command line")
+        stdout = test_field(str,
+                            hint="expected standard output")
 
     def run(self):
         command = self.input.sh
@@ -537,13 +570,13 @@ class ShellCase(RunAndCompareMixin):
                                     env=environ)
             stdout, stderr = proc.communicate(self.input.stdin)
         except OSError, exc:
-            self.ui.literal(*str(exc).splitlines())
-            self.ui.notice("failed to execute the process")
+            self.ui.literal(str(exc))
+            self.ui.warning("failed to execute the process")
             return
         if proc.returncode != self.input.exit:
             if stdout:
-                self.ui.literal(*stdout.splitlines())
-            self.ui.notice("unexpected exit code (%s)" % proc.returncode)
+                self.ui.literal(stdout)
+            self.ui.warning("unexpected exit code (%s)" % proc.returncode)
             return
         return self.Output(sh=self.input.sh, stdout=stdout)
 
@@ -555,8 +588,10 @@ class ShellCase(RunAndCompareMixin):
 class WriteToFileCase(TestCaseMixin):
 
     class Input:
-        write = test_field(str)
-        data = test_field(str)
+        write = test_field(str,
+                           hint="file name")
+        data = test_field(str,
+                          hint="file content")
 
     def check(self):
         stream = open(self.input.write, 'wb')
@@ -568,11 +603,14 @@ class WriteToFileCase(TestCaseMixin):
 class ReadFromFileCase(RunAndCompareMixin):
 
     class Input:
-        read = test_field(str)
+        read = test_field(str,
+                          hint="file name")
 
     class Output:
-        read = test_field(str)
-        data = test_field(str)
+        read = test_field(str,
+                          hint="file name")
+        data = test_field(str,
+                          hint="expected file content")
 
     def run(self):
         if not os.path.exists(self.input.read):
@@ -591,7 +629,8 @@ class ReadFromFileCase(RunAndCompareMixin):
 class RemoveFileCase(TestCaseMixin):
 
     class Input:
-        rm = test_field(oneof(str, listof(str)))
+        rm = test_field(oneof(str, listof(str)),
+                        hint="file or a list of files")
 
         def __str__(self):
             if isinstance(self.rm, str):
@@ -613,7 +652,8 @@ class RemoveFileCase(TestCaseMixin):
 class MakeDirectoryCase(TestCaseMixin):
 
     class Input:
-        mkdir = test_field(str)
+        mkdir = test_field(str,
+                           hint="directory name")
 
     def check(self):
         if not os.path.isdir(self.input.mkdir):
@@ -624,7 +664,8 @@ class MakeDirectoryCase(TestCaseMixin):
 class RemoveDirectoryCase(TestCaseMixin):
 
     class Input:
-        rmdir = test_field(str)
+        rmdir = test_field(str,
+                           hint="directory name")
 
     def check(self):
         if os.path.exists(self.input.rmdir):

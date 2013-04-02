@@ -15,17 +15,23 @@ class UI(object):
     def section(self):
         raise NotImplementedError("%s.section()" % self.__class__.__name__)
 
-    def header(self, *lines):
+    def header(self, text):
         raise NotImplementedError("%s.header()" % self.__class__.__name__)
 
-    def notice(self, *lines):
+    def notice(self, text):
         raise NotImplementedError("%s.notice()" % self.__class__.__name__)
 
-    def literal(self, *lines):
+    def warning(self, text):
+        raise NotImplementedError("%s.warning()" % self.__class__.__name__)
+
+    def error(self, text):
+        raise NotImplementedError("%s.error()" % self.__class__.__name__)
+
+    def literal(self, text):
         raise NotImplementedError("%s.literal()" % self.__class__.__name__)
 
-    def choice(self, *choices):
-        raise NotImplementedError("%s.form()" % self.__class__.__name__)
+    def choice(self, text, *choices):
+        raise NotImplementedError("%s.choice()" % self.__class__.__name__)
 
 
 class ConsoleUI(UI):
@@ -43,25 +49,38 @@ class ConsoleUI(UI):
         self.stdout.write("-"*72+"\n")
         self.stdout.flush()
 
-    def header(self, *lines):
-        for line in lines:
+    def header(self, text):
+        for line in text.splitlines():
             self.stdout.write("  "+line+"\n")
         self.stdout.flush()
 
-    def notice(self, *lines):
-        for line in lines:
-            self.stdout.write("*** "+line+"\n")
+    def notice(self, text):
+        for line in text.splitlines():
+            self.stdout.write("- "+line+"\n")
         self.stdout.flush()
 
-    def literal(self, *lines):
-        for line in lines:
+    def warning(self, text):
+        for line in text.splitlines():
+            self.stdout.write("* "+line+"\n")
+        self.stdout.flush()
+
+    def error(self, text):
+        for line in text.splitlines():
+            self.stdout.write("! "+line+"\n")
+        self.stdout.flush()
+
+    def literal(self, text):
+        for line in text.splitlines():
             self.stdout.write("  "+line+"\n")
         self.stdout.flush()
 
-    def choice(self, *choices):
+    def choice(self, text, *choices):
+        if text:
+            for line in text.splitlines():
+                self.stdout.write("> "+line+"\n")
         shortcuts = set()
         question = ""
-        for shortcut, text in choices:
+        for shortcut, choice in choices:
             shortcuts.add(shortcut)
             if not question:
                 question += "Press"
@@ -71,8 +90,8 @@ class ConsoleUI(UI):
                 question += " '%s'+ENTER" % shortcut
             else:
                 question += " ENTER"
-            question += " to %s" % text
-        self.stdout.write(">>> "+question+"\n")
+            question += " to %s" % choice
+        self.stdout.write("> "+question+"\n")
         self.stdout.flush()
         line = None
         while line not in shortcuts:

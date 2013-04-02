@@ -11,9 +11,72 @@ from .load import load, dump, locate
 import sys
 
 
+class Tree(object):
+
+    def __init__(self, paths):
+        self.parents = []
+        self.targets = []
+        if not paths:
+            self.targets = None
+        else:
+            for path in paths:
+                if isinstance(path, str):
+                    target = tuple(path.strip('/').split('/'))
+                    if not target:
+                        self.targets = None
+                        break
+                    else:
+                        self.targets.append(target)
+        self.saved_targets = []
+
+    def __contains__(self, suite):
+        if self.targets is None:
+            return True
+        for target in self.targets:
+            if target[0] == '*' or target[0] == suite:
+                return True
+        return False
+
+    def identify(self):
+        if not self.parents:
+            return "/"
+        return "".join("/"+suite for suite in self.parents)
+
+    def descend(self, suite):
+        self.saved_targets.append(self.targets)
+        self.parents.append(suite)
+        if self.targets is None:
+            return
+        self.targets = [target[1:] for target in self.targets
+                                   if target[0] == '*' or target[0] == suite]
+        if () in self.targets:
+            self.targets = None
+
+    def ascend(self):
+        self.targets = self.saved_targets.pop()
+        self.parents.pop()
+
+
+class State(dict):
+
+    __slots__ = ('_saves')
+
+    def __init__(self, *args, **kwds):
+        super(State, self).__init__(*args, **kwds)
+        self._saves = []
+
+    def save(self):
+        self._saves.append(self.copy())
+
+    def restore(self):
+        self.clear()
+        self.update(self._saves.pop())
+
+
 class TestCtl(object):
 
-    def __init__(self, ui=None, fs=None, substitutes=None,
+    def __init__(self, ui=None, fs=None,
+                 substitutes=None, paths=None,
                  training=False, purging=False, max_errors=1):
         if ui is None:
             ui = StandardUI()
@@ -28,38 +91,29 @@ class TestCtl(object):
         self.update_num = 0
         self.max_errors = max_errors
         self.halted = False
-        self.state = {}
-        if substitutes:
-            self.state.update(substitutes)
-        self.saved_states = []
+        self.state = State(substitutes or {})
+        self.tree = Tree(paths)
 
-    def save_state(self):
-        self.saved_states.append(self.state.copy())
-
-    def restore_state(self):
-        self.state.clear()
-        self.state.update(self.saved_states.pop())
-
-    def passed(self, *lines):
-        if lines:
-            self.ui.notice(*lines)
+    def passed(self, text=None):
+        if text:
+            self.ui.notice(text)
         self.success_num += 1
 
-    def failed(self, *lines):
-        if lines:
-            self.ui.notice(*lines)
+    def failed(self, text=None):
+        if text:
+            self.ui.warning(text)
         self.failure_num += 1
         if self.max_errors and self.failure_num >= self.max_errors:
             self.halted = True
 
-    def updated(self, *lines):
-        if lines:
-            self.ui.notice(*lines)
+    def updated(self, text=None):
+        if text:
+            self.ui.notice(text)
         self.update_num += 1
 
-    def halt(self, *lines):
-        if lines:
-            self.ui.notice(*lines)
+    def halt(self, text=None):
+        if text:
+            self.ui.error(text)
         self.halted = True
 
     def load_input(self, path):
@@ -87,7 +141,10 @@ class TestCtl(object):
         self.ui.part()
         if line:
             line = "TESTS: %s" % line
-            self.ui.notice(line)
+            if self.failure_num:
+                self.ui.error(line)
+            else:
+                self.ui.notice(line)
         return (not self.failure_num)
 
     def run(self, case):

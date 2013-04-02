@@ -15,6 +15,49 @@ class registry:
     output_types = []
 
 
+class TestFieldSpec(object):
+    """Record field specification."""
+
+    def __init__(self, attr, key, check=None, default=None,
+                 order=0, required=False, hint=None):
+        # Attribute name (for use in Python code).
+        self.attr = attr
+        # Key name (for use in YAML).
+        self.key = key
+        # Expected type.
+        self.check = check
+        # Default value.
+        self.default = default
+        # Relative order.
+        self.order = order
+        # Mandatory or not.
+        self.required = required
+        # One line description.
+        self.hint = hint
+
+
+class test_field(object):
+    """Record field descriptor."""
+
+    CTR = itertools.count(1)
+    REQ = object()
+
+    def __init__(self, check=None, default=REQ, order=None, hint=None):
+        # Expected type.
+        self.check = check
+        # Default value or mandatory.
+        self.default = default
+        # Relative position.
+        self.order = order or next(self.CTR)
+        # One line description.
+        self.hint = hint
+
+    def __get__(self, instance, owner):
+        if instance is None:
+            return self
+        raise AttributeError("unset test field")
+
+
 class TestRecord(object):
     """Base class for test input/output data."""
 
@@ -24,16 +67,43 @@ class TestRecord(object):
     # List of the record fields.
     __fields__ = ()
 
-    @classmethod
-    def __make__(cls, owner, name, bases, fields, members):
-        """Generates a record type with the given fields."""
-        name = "%s.%s" % (owner.__name__, name)
-        bases = tuple(bases)+(cls,)
-        members = members.copy()
-        members['__slots__'] = tuple(field.attr for field in fields)
-        members['__owner__'] = owner
-        members['__fields__'] = fields
-        return type(name, bases, members)
+    class __metaclass__(type):
+
+        def __new__(mcls, name, bases, members):
+            if '__fields__' not in members:
+                fields = set()
+                for base in bases:
+                    if '__fields__' in base.__dict__:
+                        fields.update(base.__fields__)
+                keys = set(field.key for field in fields)
+                for attr in sorted(members):
+                    dsc = members[attr]
+                    if not isinstance(dsc, test_field):
+                        continue
+                    del members[attr]
+                    key = attr
+                    if (key.endswith('_') and
+                            not (key.startswith('_') or key.endswith('__'))):
+                        key = key[:-1]
+                    key = key.replace('_', '-')
+                    assert key not in keys, \
+                            "duplicate field %r" % key
+                    keys.add(key)
+                    check = dsc.check
+                    default = dsc.default
+                    order = dsc.order
+                    required = False
+                    if default is dsc.REQ:
+                        required = True
+                        default = None
+                    hint = dsc.hint
+                    field = TestFieldSpec(attr, key, check, default,
+                                          order=order, required=required, hint=hint)
+                    fields.add(field)
+                fields = sorted(fields, key=(lambda f: f.order))
+                members['__fields__'] = fields
+                members['__slots__'] = tuple(field.attr for field in fields)
+            return type.__new__(mcls, name, bases, members)
 
     @classmethod
     def __recognizes__(cls, keys):
@@ -175,129 +245,30 @@ class TestRecord(object):
                            if value != field.default)))
 
 
-class TestFieldSpec(object):
-    """Record field specification."""
-
-    def __init__(self, attr, key, check=None, default=None,
-                 order=0, required=False, hint=None):
-        # Attribute name (for use in Python code).
-        self.attr = attr
-        # Key name (for use in YAML).
-        self.key = key
-        # Expected type.
-        self.check = check
-        # Default value.
-        self.default = default
-        # Relative order.
-        self.order = order
-        # Mandatory or not.
-        self.required = required
-        # One line description.
-        self.hint = hint
-
-
-class test_field(object):
-    """Record field descriptor."""
-
-    CTR = itertools.count(1)
-    REQ = object()
-
-    def __init__(self, check=None, default=REQ, order=None, hint=None):
-        # Expected type.
-        self.check = check
-        # Default value or mandatory.
-        self.default = default
-        # Relative position.
-        self.order = order or next(self.CTR)
-        # One line description.
-        self.hint = hint
-
-    def __get__(self, instance, owner):
-        if instance is None:
-            return self
-        raise AttributeError("unset test field")
-
-
 def test_type(cls):
     """Registers a test type."""
     assert isinstance(cls, types.TypeType), "a test type must be a class"
 
-    # Definitions from `Input` and `Output` declarations.
-    input_members = {}
-    output_members = {}
-    input_bases = []
-    output_bases = []
-    for base in reversed(cls.__mro__):
-        base_input = base.__dict__.get('Input')
-        base_output = base.__dict__.get('Output')
-        if base_input:
-            if isinstance(base_input, type) \
-                    and issubclass(base_input, TestRecord):
-                input_bases.insert(0, base_input)
-            input_members.update(base_input.__dict__)
-        if base_output:
-            if isinstance(base_output, type) \
-                    and issubclass(base_output, TestRecord):
-                output_bases.insert(0, base_output)
-            output_members.update(base_output.__dict__)
-
-    # Field names and definitions.
-    input_attrs = []
-    output_attrs = []
-    for members, attrs in [(input_members, input_attrs),
-                           (output_members, output_attrs)]:
-        for attr in sorted(members):
-            value = members[attr]
-            if isinstance(value, test_field):
-                attrs.append((attr, value))
-                del members[attr]
-    input_attrs.sort()
-    output_attrs.sort()
-
-    # Field specifications.
-    input_fields = []
-    output_fields = []
-    for bases, attrs, fields in [(input_bases, input_attrs, input_fields),
-                                 (output_bases, output_attrs, output_fields)]:
-        for base in bases:
-            for field in base.__fields__:
-                if field not in fields:
-                    fields.append(field)
-        keys = set()
-        for attr, dsc in attrs:
-            key = attr
-            if (key.endswith('_') and
-                    not (key.startswith('_') or key.endswith('__'))):
-                key = key[:-1]
-            key = key.replace('_', '-')
-            assert key not in keys, \
-                    "duplicate field %r" % key
-            keys.add(key)
-            check = dsc.check
-            default = dsc.default
-            order = dsc.order
-            required = False
-            if default is dsc.REQ:
-                required = True
-                default = None
-            hint = dsc.hint
-            field = TestFieldSpec(attr, key, check, default,
-                                  order=order, required=required, hint=hint)
-            fields.append(field)
-        fields.sort(key=(lambda f: f.order))
-
-    # Register the test and generate record types.
-    cls.Input = None
-    cls.Output = None
-    if input_fields:
-        cls.Input = TestRecord.__make__(cls, 'Input', input_bases,
-                                        input_fields, input_members)
-        registry.input_types.append(cls.Input)
-    if output_fields:
-        cls.Output = TestRecord.__make__(cls, 'Output', output_bases,
-                                         output_fields, output_members)
-        registry.output_types.append(cls.Output)
+    for name in ['Input', 'Output']:
+        record_bases = [TestRecord]
+        for base in reversed(cls.__mro__):
+            if name not in base.__dict__:
+                continue
+            record_def = base.__dict__[name]
+            if isinstance(record_def, type) and issubclass(record_def, TestRecord):
+                record_bases.insert(0, record_def)
+                continue
+            record_name = "%s.%s" % (base.__name__, name)
+            record_members = record_def.__dict__.copy()
+            record_members['__owner__'] = base
+            record_type = type(record_name, tuple(record_bases), record_members)
+            setattr(base, name, record_type)
+            record_bases.insert(0, record_type)
     registry.case_types.append(cls)
+    if 'Input' in cls.__dict__:
+        registry.input_types.append(cls.Input)
+    if 'Output' in cls.__dict__:
+        registry.output_types.append(cls.Output)
 
     return cls
 
