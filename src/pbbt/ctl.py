@@ -5,10 +5,11 @@
 
 
 from .core import registry
-from .ui import ConsoleUI as StandardUI
+from .ui import ConsoleUI, SilentUI
 #from .fs import StandardFS
 from .load import load, dump, locate
 import sys
+import os.path
 
 
 class Tree(object):
@@ -77,9 +78,12 @@ class TestCtl(object):
 
     def __init__(self, ui=None, fs=None,
                  substitutes=None, paths=None,
-                 training=False, purging=False, max_errors=1):
+                 training=False, purging=False, max_errors=1,
+                 quiet=False):
         if ui is None:
-            ui = StandardUI()
+            ui = ConsoleUI()
+        if quiet:
+            ui = SilentUI(ui)
         #if fs is None:
         #    fs = StandardFS()
         self.ui = ui
@@ -90,6 +94,7 @@ class TestCtl(object):
         self.failure_num = 0
         self.update_num = 0
         self.max_errors = max_errors
+        self.quiet = quiet
         self.halted = False
         self.state = State(substitutes or {})
         self.tree = Tree(paths)
@@ -125,11 +130,15 @@ class TestCtl(object):
     def dump_output(self, path, data):
         return dump(path, data)
 
-    def __call__(self, path):
-        input = self.load_input(path)
+    def __call__(self, input_path, output_path):
+        input = self.load_input(input_path)
         output = None
+        if output_path is not None and os.path.exists(output_path):
+            output = self.load_output(output_path)
+            if not input.__complements__(output):
+                output = None
         case = input.__owner__(self, input, output)
-        self.run(case)
+        new_output = self.run(case)
         line = []
         if self.success_num:
             line.append("%s passed" % self.success_num)
@@ -145,7 +154,11 @@ class TestCtl(object):
                 self.ui.error(line)
             else:
                 self.ui.notice(line)
-        return (not self.failure_num)
+        if (output_path is not None and
+                new_output is not None and new_output != output):
+            self.ui.notice("saving test output to %r" % output_path)
+            self.dump_output(output_path, new_output)
+        return int(bool(self.failure_num))
 
     def run(self, case):
         return case()

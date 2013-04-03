@@ -101,3 +101,59 @@ class ConsoleUI(UI):
         return line
 
 
+class SilentUI(UI):
+
+    def __init__(self, backend):
+        self.backend = backend
+        self.queue = []
+        self.visible = False
+
+    def restart(self):
+        del self.queue[:]
+        self.visible = False
+
+    def force(self):
+        self.visible = True
+        self.process()
+
+    def process(self):
+        if self.visible:
+            for method, args in self.queue:
+                method(*args)
+            del self.queue[:]
+
+    def part(self):
+        self.restart()
+        self.queue.append((self.backend.part, ()))
+        self.process()
+
+    def section(self):
+        self.restart()
+        self.queue.append((self.backend.section, ()))
+        self.process()
+
+    def header(self, text):
+        self.queue.append((self.backend.header, (text,)))
+        self.process()
+
+    def notice(self, text):
+        self.queue.append((self.backend.notice, (text,)))
+        self.process()
+
+    def warning(self, text):
+        self.queue.append((self.backend.warning, (text,)))
+        self.force()
+
+    def error(self, text):
+        self.queue.append((self.backend.error, (text,)))
+        self.force()
+
+    def literal(self, text):
+        self.queue.append((self.backend.literal, (text,)))
+        self.process()
+
+    def choice(self, text, *choices):
+        self.force()
+        return self.backend.choice(text, *choices)
+
+

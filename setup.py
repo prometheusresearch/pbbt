@@ -30,7 +30,11 @@ CLASSIFIERS = [
 PACKAGES = find_packages('src')
 PACKAGE_DIR = {'': 'src'}
 INSTALL_REQUIRES = ['PyYAML']
-ENTRY_POINTS = {}
+ENTRY_POINTS = {
+    'console_scripts': [
+        'pbbt = pbbt.script:main',
+    ],
+}
 USE_2TO3 = True
 
 
