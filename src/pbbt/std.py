@@ -4,7 +4,7 @@
 #
 
 
-from .core import test_type, test_field, TestRecord
+from .core import Test, Field, Record
 from .check import listof, oneof, dictof
 from .load import locate
 import sys
@@ -38,12 +38,12 @@ def to_identifier(text, trim_re=re.compile(r'^[\W_]+|[\W_]+$'),
 class TestCaseMixin(object):
 
     class Input:
-        skip = test_field(bool, default=False, order=1e10+1,
-                          hint="skip the test")
-        if_ = test_field(oneof(str, listof(str)), default=None, order=1e10+2,
-                         hint="run only the condition is satisfied")
-        unless = test_field(oneof(str, listof(str)), default=None, order=1e10+3,
-                            hint="run unless the condition is satisfied")
+        skip = Field(bool, default=False, order=1e10+1,
+                     hint="skip the test")
+        if_ = Field(oneof(str, listof(str)), default=None, order=1e10+2,
+                    hint="run only the condition is satisfied")
+        unless = Field(oneof(str, listof(str)), default=None, order=1e10+3,
+                       hint="run unless the condition is satisfied")
 
     def __init__(self, ctl, input, output):
         self.ctl = ctl
@@ -101,8 +101,8 @@ class TestCaseMixin(object):
 class RunAndCompareMixin(TestCaseMixin):
 
     class Input:
-        ignore = test_field(oneof(bool, str), default=False, order=1e5+1,
-                            hint="ignore the output")
+        ignore = Field(oneof(bool, str), default=False, order=1e5+1,
+                       hint="ignore the output")
 
         @classmethod
         def __load__(cls, mapping):
@@ -207,12 +207,12 @@ class RunAndCompareMixin(TestCaseMixin):
         return self.output
 
 
-@test_type
+@Test
 class SetCase(TestCaseMixin):
 
     class Input:
-        set_ = test_field(oneof(str, dictof(str, object)),
-                          hint="set a conditional variable")
+        set_ = Field(oneof(str, dictof(str, object)),
+                     hint="set a conditional variable")
 
     def check(self):
         if isinstance(self.input.set_, str):
@@ -221,18 +221,18 @@ class SetCase(TestCaseMixin):
             self.ctl.state.update(self.input.set_)
 
 
-@test_type
+@Test
 class SuiteCase(TestCaseMixin):
 
     class Input:
-        suite = test_field(str, default=None,
-                           hint="suite identifier")
-        title = test_field(str,
-                           hint="suite title")
-        output = test_field(str, default=None,
-                            hint="file with expected output")
-        tests = test_field(listof(TestRecord),
-                           hint="list of test inputs")
+        suite = Field(str, default=None,
+                      hint="suite identifier")
+        title = Field(str,
+                      hint="suite title")
+        output = Field(str, default=None,
+                       hint="file with expected output")
+        tests = Field(listof(Record),
+                      hint="list of test inputs")
 
         @classmethod
         def __recognizes__(cls, keys):
@@ -253,10 +253,10 @@ class SuiteCase(TestCaseMixin):
             return self.title
 
     class Output:
-        suite = test_field(str,
-                           hint="suite identifier")
-        tests = test_field(listof(TestRecord),
-                           hint="list of test outputs")
+        suite = Field(str,
+                      hint="suite identifier")
+        tests = Field(listof(Record),
+                      hint="list of test outputs")
 
     def __init__(self, ctl, input, output):
         super(SuiteCase, self).__init__(ctl, input, output)
@@ -384,18 +384,18 @@ class SuiteCase(TestCaseMixin):
         return new_output
 
 
-@test_type
+@Test
 class IncludeCase(TestCaseMixin):
 
     class Input:
-        include = test_field(str,
-                             hint="file with tests")
+        include = Field(str,
+                        hint="file with tests")
 
     class Output:
-        include = test_field(str,
-                             hint="file with tests")
-        output = test_field(TestRecord,
-                            hint="expected output")
+        include = Field(str,
+                        hint="file with tests")
+        output = Field(Record,
+                       hint="expected output")
 
     def load(self):
         included_input = self.ctl.load_input(self.input.include)
@@ -427,16 +427,16 @@ class IncludeCase(TestCaseMixin):
         return output
 
 
-@test_type
+@Test
 class PythonCase(RunAndCompareMixin):
 
     class Input:
-        py = test_field(str,
-                        hint="file name or source code")
-        stdin = test_field(str, default='',
-                           hint="standard input")
-        except_ = test_field(str, default=None,
-                             hint="expected exception name")
+        py = Field(str,
+                   hint="file name or source code")
+        stdin = Field(str, default='',
+                      hint="standard input")
+        except_ = Field(str, default=None,
+                        hint="expected exception name")
 
         @property
         def py_key(self):
@@ -464,10 +464,10 @@ class PythonCase(RunAndCompareMixin):
             return "PY: %s" % self.py_key
 
     class Output:
-        py = test_field(str,
-                        hint="file name or source code identifier")
-        stdout = test_field(str,
-                            hint="expected standard output")
+        py = Field(str,
+                   hint="file name or source code identifier")
+        stdout = Field(str,
+                       hint="expected standard output")
 
         @property
         def py_key(self):
@@ -480,12 +480,15 @@ class PythonCase(RunAndCompareMixin):
         filename = self.input.py_as_filename
         if filename is not None:
             try:
-                source = open(filename, 'rb')
+                stream = open(filename, 'rb')
+                source = stream.read()
+                stream.close()
             except IOError:
                 self.ui.warning("missing file %r" % source)
                 return
         else:
             source = self.input.py_as_source
+            filename = "<%s>" % locate(self.input)
         old_stdin = sys.stdin
         old_stdout = sys.stdout
         old_stderr = sys.stderr
@@ -497,7 +500,8 @@ class PythonCase(RunAndCompareMixin):
             context['__pbbt__'] = self.state
             exc_info = None
             try:
-                exec source in context
+                code = compile(source, filename, 'exec')
+                exec code in context
             except:
                 exc_info = sys.exc_info()
             stdout = sys.stdout.getvalue()
@@ -527,20 +531,20 @@ class PythonCase(RunAndCompareMixin):
         return output.stdout
 
 
-@test_type
+@Test
 class ShellCase(RunAndCompareMixin):
 
     class Input:
-        sh = test_field(oneof(str, listof(str)),
-                        hint="command line")
-        cd = test_field(str, default=None,
-                        hint="working directory")
-        environ = test_field(dictof(str, str), default=None,
-                             hint="environment variables")
-        stdin = test_field(str, default='',
-                           hint="standard input")
-        exit = test_field(int, default=0,
-                          hint="expected exit code")
+        sh = Field(oneof(str, listof(str)),
+                   hint="command line")
+        cd = Field(str, default=None,
+                   hint="working directory")
+        environ = Field(dictof(str, str), default=None,
+                        hint="environment variables")
+        stdin = Field(str, default='',
+                      hint="standard input")
+        exit = Field(int, default=0,
+                     hint="expected exit code")
 
         def __str__(self):
             if isinstance(self.sh, str):
@@ -549,10 +553,10 @@ class ShellCase(RunAndCompareMixin):
                 return "SH: %s" % " ".join(self.sh)
 
     class Output:
-        sh = test_field(oneof(str, listof(str)),
-                        hint="command line")
-        stdout = test_field(str,
-                            hint="expected standard output")
+        sh = Field(oneof(str, listof(str)),
+                   hint="command line")
+        stdout = Field(str,
+                       hint="expected standard output")
 
     def run(self):
         command = self.input.sh
@@ -573,6 +577,9 @@ class ShellCase(RunAndCompareMixin):
             self.ui.literal(str(exc))
             self.ui.warning("failed to execute the process")
             return
+        stdout = stdout.decode('utf-8', 'replace')
+        if not isinstance(stdout, str):
+            stdout = stdout.encode('utf-8')
         if proc.returncode != self.input.exit:
             if stdout:
                 self.ui.literal(stdout)
@@ -584,14 +591,14 @@ class ShellCase(RunAndCompareMixin):
         return output.stdout
 
 
-@test_type
+@Test
 class WriteToFileCase(TestCaseMixin):
 
     class Input:
-        write = test_field(str,
-                           hint="file name")
-        data = test_field(str,
-                          hint="file content")
+        write = Field(str,
+                      hint="file name")
+        data = Field(str,
+                     hint="file content")
 
     def check(self):
         stream = open(self.input.write, 'wb')
@@ -599,18 +606,18 @@ class WriteToFileCase(TestCaseMixin):
         stream.close()
 
 
-@test_type
+@Test
 class ReadFromFileCase(RunAndCompareMixin):
 
     class Input:
-        read = test_field(str,
-                          hint="file name")
+        read = Field(str,
+                     hint="file name")
 
     class Output:
-        read = test_field(str,
-                          hint="file name")
-        data = test_field(str,
-                          hint="expected file content")
+        read = Field(str,
+                     hint="file name")
+        data = Field(str,
+                     hint="expected file content")
 
     def run(self):
         if not os.path.exists(self.input.read):
@@ -625,12 +632,12 @@ class ReadFromFileCase(RunAndCompareMixin):
         return self.output.data
 
 
-@test_type
+@Test
 class RemoveFileCase(TestCaseMixin):
 
     class Input:
-        rm = test_field(oneof(str, listof(str)),
-                        hint="file or a list of files")
+        rm = Field(oneof(str, listof(str)),
+                   hint="file or a list of files")
 
         def __str__(self):
             if isinstance(self.rm, str):
@@ -648,24 +655,24 @@ class RemoveFileCase(TestCaseMixin):
                 os.unlink(filename)
 
 
-@test_type
+@Test
 class MakeDirectoryCase(TestCaseMixin):
 
     class Input:
-        mkdir = test_field(str,
-                           hint="directory name")
+        mkdir = Field(str,
+                      hint="directory name")
 
     def check(self):
         if not os.path.isdir(self.input.mkdir):
             os.makedirs(self.input.mkdir)
 
 
-@test_type
+@Test
 class RemoveDirectoryCase(TestCaseMixin):
 
     class Input:
-        rmdir = test_field(str,
-                           hint="directory name")
+        rmdir = Field(str,
+                      hint="directory name")
 
     def check(self):
         if os.path.exists(self.input.rmdir):

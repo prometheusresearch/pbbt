@@ -4,12 +4,62 @@
 #
 
 
-from .core import TestRecord
+from .core import Record
 from .check import listof
 import re
 import os
 import weakref
 import yaml
+
+
+class Location(object):
+    """Position of a record in the YAML document."""
+
+    def __init__(self, filename, line):
+        self.filename = filename
+        self.line = line
+
+    def __str__(self):
+        return "\"%s\", line %s" % (self.filename, self.line)
+
+
+class LocationRef(weakref.ref):
+    # Weak reference from a record to its location.
+
+    __slots__ = ('oid', 'location')
+
+    oid_to_ref = {}
+
+    @staticmethod
+    def cleanup(ref, oid_to_ref=oid_to_ref):
+        del oid_to_ref[ref.oid]
+
+    def __new__(cls, record, location):
+        self = super(LocationRef, cls).__new__(cls, record, cls.cleanup)
+        self.oid = id(record)
+        self.location = location
+        cls.oid_to_ref[self.oid] = self
+        return self
+
+    def __init__(self, record, location):
+        super(LocationRef, self).__init__(record, location)
+
+    @classmethod
+    def locate(cls, record):
+        """Finds the record location."""
+        ref = cls.oid_to_ref.get(id(record))
+        if ref is not None:
+            return ref.location
+
+    @classmethod
+    def set_location(cls, record, location):
+        # Associates a record with its location.
+        cls(record, location)
+        return record
+
+
+set_location = LocationRef.set_location
+locate = LocationRef.locate
 
 
 # Use fast LibYAML-based loader and serializer when available.
@@ -22,7 +72,7 @@ except AttributeError:
 
 
 class TestLoader(BaseYAMLLoader):
-    """Reads test input/output data from a file."""
+    # Reads test input/output data from a file.
 
     # A pattern to match `!substitute` nodes.
     substitute_re = re.compile(r"""
@@ -44,14 +94,13 @@ class TestLoader(BaseYAMLLoader):
         self.expect_record_list = None
 
     def __call__(self):
-        # Makes sure the YAML stream contains exactly one document and
-        # returns it.
+        # Make sure the YAML stream contains one test record and returns it.
         self.expect_record = True
         self.expect_record_list = False
         return self.get_single_data()
 
     def construct_object(self, node, deep=False):
-        # Overriden to generate better error messages.
+        # Generate a nicer error message when a test record could not be found.
         if self.expect_record:
             if not (isinstance(node, yaml.MappingNode) and
                     node.tag == u"tag:yaml.org,2002:map"):
@@ -66,17 +115,19 @@ class TestLoader(BaseYAMLLoader):
         data = super(TestLoader, self).construct_object(node, deep=deep)
 
         if self.expect_record:
-            if not isinstance(data, TestRecord):
+            if not isinstance(data, Record):
                 raise yaml.constructor.ConstructorError(None, None,
                         "expected a test record", node.start_mark)
 
         return data
 
     def construct_yaml_str(self, node):
-        # Always return `!!str`` nodes as byte strings.
+        # Always return a `!!str`` node as a native string.
         value = self.construct_scalar(node)
-        value = value.encode('utf-8')
-        return value
+        try:
+            return str(value)
+        except UnicodeEncodeError:
+            return value.encode('utf-8')
 
     def construct_yaml_seq(self, node):
         if not self.expect_record_list:
@@ -117,7 +168,7 @@ class TestLoader(BaseYAMLLoader):
             if not isinstance(key, str):
                 raise yaml.constructor.ConstructorError(
                         "while constructing a test record", node.start_mark,
-                        "found invalid field", key_node.start_mark)
+                        "found invalid field name", key_node.start_mark)
             keys.append(key)
         self.expect_record = current_expect_record
 
@@ -150,10 +201,10 @@ class TestLoader(BaseYAMLLoader):
             field = next((field for field in detected_record_type.__fields__
                                 if field.key == key), None)
             if field is not None:
-                if field.check == TestRecord:
+                if field.check == Record:
                     self.expect_record = True
                 elif (isinstance(field.check, listof) and
-                        field.check.item_check == TestRecord):
+                        field.check.item_check == Record):
                     self.expect_record_list = True
             value = self.construct_object(value_node, deep=True)
             mapping[key] = value
@@ -176,7 +227,10 @@ class TestLoader(BaseYAMLLoader):
     def construct_substitute(self, node):
         # Process `${...}` scalars.
         value = self.construct_scalar(node)
-        value = value.encode('utf-8')
+        try:
+            value = str(value)
+        except UnicodeEncodeError:
+            value = value.encode('utf-8')
         match = self.substitute_re.match(value)
         if match is None:
             raise yaml.constructor.ConstructorError(None, None,
@@ -201,16 +255,16 @@ TestLoader.add_implicit_resolver(
 
 
 class TestDumper(BaseYAMLDumper):
-    """Saves test input/output data to a file"""
+    # Saves test input/output data to a file.
 
     def __init__(self, stream, **keywords):
         super(TestDumper, self).__init__(stream, **keywords)
-        # Check if the PyYAML version is suitable for dumping.
         self.check_version()
 
     def check_version(self):
         # Different versions of PyYAML may produce slightly different output.
-        # To avoid this, we require a specific version of PyYAML/LibYAML.
+        # Since it causes spurious diffs when test output is stored in VCS,
+        # we require a specific version of PyYAML/LibYAML.
         try:
             pyyaml_version = yaml.__version__
         except AttributeError:
@@ -221,13 +275,13 @@ class TestDumper(BaseYAMLDumper):
         except ImportError:
             libyaml_version = None
         if pyyaml_version < '3.07':
-            raise ScriptError("PyYAML >= 3.07 is required"
+            raise ImportError("PyYAML >= 3.07 is required"
                               " to dump test output")
         if libyaml_version is None:
-            raise ScriptError("PyYAML built with LibYAML bindings"
+            raise ImportError("PyYAML built with LibYAML bindings"
                               " is required to dump test output")
         if libyaml_version < '0.1.2':
-            raise ScriptError("LibYAML >= 0.1.2 is required"
+            raise ImportError("LibYAML >= 0.1.2 is required"
                               " to dump test output")
 
     def __call__(self, data):
@@ -237,17 +291,17 @@ class TestDumper(BaseYAMLDumper):
 
     def represent_str(self, data):
         # Overriden to force literal block style for multi-line strings.
-        tag = None
         style = None
         if data.endswith('\n'):
             style = '|'
-        try:
-            data = data.decode('utf-8')
-            tag = u'tag:yaml.org,2002:str'
-        except UnicodeDecodeError:
-            data = data.encode('base64')
-            tag = u'tag:yaml.org,2002:binary'
-            style = '|'
+        tag = u'tag:yaml.org,2002:str'
+        if not isinstance(data, unicode):
+            try:
+                data = data.decode('utf-8')
+            except UnicodeDecodeError:
+                data = data.encode('base64')
+                tag = u'tag:yaml.org,2002:binary'
+                style = '|'
         return self.represent_scalar(tag, data, style=style)
 
     def represent_record(self, data):
@@ -260,71 +314,21 @@ class TestDumper(BaseYAMLDumper):
 TestDumper.add_representer(
         str, TestDumper.represent_str)
 TestDumper.add_multi_representer(
-        TestRecord, TestDumper.represent_record)
+        Record, TestDumper.represent_record)
 # Register a resolver for ``!substitute``.
 TestDumper.add_implicit_resolver(
         u'!substitute', TestLoader.substitute_re, [u'$'])
 
 
-class Location(object):
-    """Position in a YAML document."""
-
-    def __init__(self, filename, line):
-        self.filename = filename
-        self.line = line
-
-    def __str__(self):
-        return "\"%s\", line %s" % (self.filename, self.line)
-
-
-class LocationRef(weakref.ref):
-    """Weak reference from a record to its location."""
-
-    __slots__ = ('oid', 'location')
-
-    oid_to_ref = {}
-
-    @staticmethod
-    def cleanup(ref, oid_to_ref=oid_to_ref):
-        del oid_to_ref[ref.oid]
-
-    def __new__(cls, record, location):
-        self = super(LocationRef, cls).__new__(cls, record, cls.cleanup)
-        self.oid = id(record)
-        self.location = location
-        cls.oid_to_ref[self.oid] = self
-        return self
-
-    def __init__(self, record, location):
-        super(LocationRef, self).__init__(record, location)
-
-    @classmethod
-    def locate(cls, record):
-        """Finds the record location."""
-        ref = cls.oid_to_ref.get(id(record))
-        if ref is not None:
-            return ref.location
-
-    @classmethod
-    def set_location(cls, record, location):
-        """Associates a record with its location."""
-        cls(record, location)
-        return record
-
-
-set_location = LocationRef.set_location
-locate = LocationRef.locate
-
-
 def load(filename, record_types, substitutes={}):
-    """Loads test input/output data from a file."""
+    # Loads test input/output data from a file.
     stream = open(filename, 'r')
     loader = TestLoader(record_types, substitutes, stream)
     return loader()
 
 
 def dump(filename, record):
-    """Saves test output data to a file."""
+    # Saves test output data to a file.
     stream = open(filename, 'w')
     dumper = TestDumper(stream)
     return dumper(record)

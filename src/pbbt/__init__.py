@@ -4,13 +4,11 @@
 #
 
 
-from .core import test_type, test_field
-from .ctl import TestCtl
+from .core import Test, Field, Record
+from .ctl import Control
+from .load import load, dump, locate, Location
+from .run import run, main
 from .std import TestCaseMixin, RunAndCompareMixin
-
-
-def test(input, output=None, **configuration):
-    ctl = TestCtl(**configuration)
-    return ctl(input, output)
+from .ui import UI, ConsoleUI, SilentUI
 
 

@@ -5,6 +5,7 @@
 
 
 from setuptools import setup, find_packages
+import sys
 
 
 NAME = "pbbt"
@@ -24,15 +25,17 @@ CLASSIFIERS = [
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python",
     "Programming Language :: Python :: 2",
-#    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3",
     "Topic :: Utilities",
 ]
 PACKAGES = find_packages('src')
 PACKAGE_DIR = {'': 'src'}
 INSTALL_REQUIRES = ['PyYAML']
+if sys.version_info < (2, 7):
+    INSTALL_REQUIRES.append('argparse')
 ENTRY_POINTS = {
     'console_scripts': [
-        'pbbt = pbbt.script:main',
+        'pbbt = pbbt:main',
     ],
 }
 USE_2TO3 = True

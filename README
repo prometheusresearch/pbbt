@@ -40,23 +40,64 @@ Kirill Simonov from Prometheus Research, LLC.
 Using PBBT
 ==========
 
-PBBT is a Python library.  It's public API consists of a single function
-``test()``::
+PBBT is a Python library and a command-line script.  By default, PBBT
+provides only a limited number of test types.  You can use PBBT API
+to define custom test types.
 
-    from pbbt import test
-    test('input.yaml')
+To install PBBT, you can use pip_ package manager::
 
-Function ``test()`` takes the file with input test data as a parameter.
+    $ pip install pbbt
 
-``test(filename, ui=None, training=False)``
-    Loads a set of tests from ``filename`` and runs them.
+This command will download the latest version of PBBT from
+http://pypi.python.org/pypi/pbbt and install the ``pbbt`` Python
+package and command-line utility.
 
-    ``filename``: ``str``
-        The name of the file containing test input data.
-    ``ui``: ``UI``
-        The object responsible for output and user interaction.
-    ``training``: ``bool``
-        If set, run the tests in the training mode.
+To start using PBBT, you need to create a file with input data.
+For example, create ``input.yaml`` with the following content::
+
+    py: |
+      print "Hello, World!"
+
+The file is in YAML_ format and specifies a mapping::
+
+    { "py": "print \"Hello, World!\"\n" }
+
+For description of YAML syntax, see http://yaml.org/.
+
+Now you can execute PBBT in *training* mode to generate the
+respective output data.  Run::
+
+    $ pbbt input.yaml output.yaml --train
+
+and accept new output when asked.  PBBT will write output data
+into ``output.yaml``::
+
+    py: print-hello-world
+    stdout: |
+      Hello, World!
+
+Now you can start PBBT to run the test again and validate the output::
+
+    # pbbt input.yaml output.yaml
+
+An input file specifies a single test case, however a special test
+type, called a *test suite*, allows you to specify an unlimited
+number of tests.  For example::
+
+    title: My tests
+    tests:
+    - py: |
+        print "Hello, World!"
+    - py: |
+        print 2+2
+
+Test suites could be nested or included from another file::
+
+    title: Top-level tests
+    tests:
+    - title: Nested tests
+      tests:
+      - include: other-input.yaml
 
 
 Input file format and predefined test types
@@ -73,6 +114,22 @@ Those include:
 A test case is a record with a specific set of fields.  Some fields
 are mandatory; some could be omitted.
 
+Common
+------
+
+The following fields are used by more than one test type.
+
+Fields:
+
+``skip``: ``true`` or ``false``
+    Skip the test.
+``if``: variable, list of variables or Python expression
+    Conditional check.
+``unless``: variable, list of variables or Python expression
+    Negative conditional check.
+``ignore``: ``true``, ``false`` or regular expression
+    Ignore output or part of it.
+
 Test Suite
 ----------
 
@@ -80,12 +137,22 @@ A test suite is a collection of test cases.
 
 Fields:
 
-``title``: ``str``
+``title``: free-form text
     The title of the suite
-``id``: ``str``
+``suite``: identifier
     The identifier of the suite.  If not set, generated from the title.
-``tests``: ``listof(TestRecord)``
+``tests``: list of tests
     List of nested test cases.
+
+Set
+---
+
+This test cast defines a conditional variable.
+
+Fields:
+
+``set``: name or a dictionary of names and values
+    Adds a conditional variable.
 
 Include
 -------
@@ -94,7 +161,7 @@ Loads test data from another file.
 
 Fields:
 
-``include``: ``str``
+``include``: file name
     The file to load.
 
 Python
@@ -104,9 +171,11 @@ Executes Python code.
 
 Fields:
 
-``py``: ``str``
+``py``: filename or Python code
     Either the file name or Python code to execute.
-``except``: ``str``
+``stdin``: text data
+    ``stdin`` content.
+``except``: exception name
     If set, indicates that the code is expected to produce an exception.
 
 Shell
@@ -116,11 +185,52 @@ Executes a shell command.
 
 Fields:
 
-``sh``: ``oneof(str, listof(str))``
+``sh``:
     The shell command.
 ``exit``: ``int``
     The expected exit code; ``0`` by default.
 
+Write to File
+-------------
+
+Fields:
+
+``write``:
+    File name.
+``data``:
+    File content.
+
+Read from File
+--------------
+
+Fields:
+
+``read``:
+    File name.
+
+Remove File
+-----------
+
+Fields:
+
+``rm``:
+    File or a list of files.
+
+Make Directory
+--------------
+
+Fields:
+
+``mkdir``:
+    Directory name.
+
+Remove Directory
+----------------
+
+Fields:
+
+``rmdir``:
+    Directory name.
 
 Defining new test types
 =======================
@@ -149,23 +259,84 @@ and ``test_field`` descriptor::
             # On success, returns new output record.
 
 
-Reference
-=========
+Command-line Reference
+======================
 
-``TestCtl``
-    Test controller.
+Usage::
 
-``UI``
-    Output and user interface.
+    pbbt [<options>] INPUT [OUTPUT]
 
-``TestRecord``
-    Input or output record.
+Here, ``INPUT`` and ``OUTPUT`` are files which contain input and
+output test data respectively.
 
-``test_case``
-    Defines a new test type.
+The following options are available::
 
-``test_field()``
-    Defines a field of an input or output record.
+``-h``, ``--help``
+    Display usage information and exit.
+
+``-q``, ``--quiet``
+    Show only warnings and errors.
+
+``-T``, ``--train``
+    Run tests in the training mode.
+
+``-P``, ``--purge``
+    Purge stale output data.
+
+``-M N``, ``--max-errors N``
+    Halt after ``N`` tests failed; ``0`` means "never".
+
+``-D VAR``, ``-D VAR=VALUE``, ``--define VAR``, ``--define VAR=VALUE``
+    Set a conditional variable.
+
+``-E FILE``, ``-E MODULE``, ``--extend FILE``, ``--extend MODULE``
+    Load a PBBT extension from a file or a Python module.
+
+``-S ID``, ``--suite ID``
+    Run a specific test suite.
+
+
+API Reference
+=============
+
+``pbbt.Test(C)``
+    Decorates an implementation of a test type.
+
+``pbbt.Field(...)``
+    Describes a field of an input or an output record.
+
+``pbbt.Record(...)``
+    Base class for all input and output records.
+
+``pbbt.Control(...)``
+    The controller class.
+
+``pbbt.load(...)``
+    Loads a test record from a YAML file.
+
+``pbbt.dump(...)``
+    Saves a test record to a YAML file.
+
+``pbbt.run(...)``
+    Starts the test harness.
+
+``pbbt.main(...)``
+    Implements the ``pbbt`` command-line utility.
+
+``pbbt.TestCaseMixin``
+    Provides common utilities for test type implementations.
+
+``pbbt.RunAndCompareMixin``
+    Provides common utilities for test type implementations.
+
+``pbbt.UI``
+    Provides user input/output services.
+
+``pbbt.ConsoleUI``
+    Implements ``UI`` for console input/output.
+
+``pbbt.SilentUI``
+    Implements ``UI`` for use with ``--quiet`` option
 
 
 .. vim: set spell spelllang=en textwidth=72:

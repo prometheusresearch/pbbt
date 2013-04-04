@@ -74,7 +74,7 @@ class State(dict):
         self.update(self._saves.pop())
 
 
-class TestCtl(object):
+class Control(object):
 
     def __init__(self, ui=None, fs=None,
                  substitutes=None, paths=None,
