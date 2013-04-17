@@ -2,235 +2,314 @@
   PBBT -- Pluggable Black-Box Testing toolkit
 ***********************************************
 
+
 Overview
 ========
 
-PBBT is a regression test harness for *black-box testing*.  It
-is based on the idea that behavior of a complex system could be captured
-as a set of input/output pairs of a well-defined simple structure.
+PBBT is a regression test harness for *black-box testing*.  It is
+suitable for testing complex software components with well-defined input
+and output interfaces.
 
 ::
 
-     input    +-----------+   output
-    --------> | Black Box | --------->
-              +-----------+
+      input    +----------+   output
+    o--------> | Software | --------->o
+               +----------+
 
-Examples of of black-box testing are:
+In black-box testing, a *test case* is a combination of *input* and
+expected *output* data.  The test harness executes the software with the
+given input and compares the produced output with one that was expected.
 
-1. A database system: the input is a SQL statement, the output is a
-   sequence of output records.
-2. A web application: the input is an HTTP request, the output if an
-   HTTP response.
-3. Black box testing of GUI applications is less obvious, but one
-   possible approach is: the input is a sequence of user actions, the
-   output is a screenshot of the application window.
+Black-box testing could be implemented for many different types of
+software.  For example,
 
-PBBT allows you to:
+1. *A database system.*  The input is a SQL statement; the output is a
+   set of records.
+2. *A web service.*  The input is an HTTP request; the output is an HTTP
+   response.
+3. *A command-line utility.*  The input is a sequence of command-line
+   parameters and ``stdin``; the output is ``stdout``.
+4. *A GUI application.*  Different approaches are possible.  For
+   instance, the input could be a sequence of user actions, and the
+   output could be the state of a particular widget.
 
-* define your own test types;
-* provide a set of test cases using convenient and compact YAML format;
+PBBT is a Python library and an application which allows you to:
+
+* use built-in test types for testing command-line scripts and Python
+  code;
+* register custom test types;
+* prepare test input in a succinct YAML_ format;
 * in the *train* mode, run the test cases and record expected output;
 * in the *check* mode, run the test cases and compare the produced
-  output with the expected output.
+  output with the pre-recorded expected output.
 
-PBBT is a free software released under MIT license.  PBBT is written by
-Kirill Simonov from Prometheus Research, LLC.
+PBBT is a free software released under MIT license.  PBBT is created by
+Clark C. Evans and Kirill Simonov from `Prometheus Research, LLC`_.
 
 
 Using PBBT
 ==========
 
-PBBT is a Python library and a command-line script.  By default, PBBT
-provides only a limited number of test types.  You can use PBBT API
-to define custom test types.
-
 To install PBBT, you can use pip_ package manager::
 
-    $ pip install pbbt
+    # pip install pbbt
 
-This command will download the latest version of PBBT from
-http://pypi.python.org/pypi/pbbt and install the ``pbbt`` Python
-package and command-line utility.
+This command downloads and installs the latest version of PBBT from
+`Python Package Index`_.  After successful installation, you should be
+able to import ``pbbt`` Python module and run ``pbbt`` command-line
+utility.
 
-To start using PBBT, you need to create a file with input data.
-For example, create ``input.yaml`` with the following content::
+To start using PBBT, you need to create a file with input data.  For
+example, create ``input.yaml`` with the following content::
 
     py: |
       print "Hello, World!"
 
-The file is in YAML_ format and specifies a mapping::
+This file is in YAML_ format, which is a data serialization language
+similar to JSON_, and, in fact, a superset of JSON.  The file above
+could be represented in JSON as::
 
     { "py": "print \"Hello, World!\"\n" }
 
-For description of YAML syntax, see http://yaml.org/.
+For description of YAML syntax and semantics, see http://yaml.org/.
 
-Now you can execute PBBT in *training* mode to generate the
-respective output data.  Run::
+Next, execute PBBT in *training* mode to generate expected output data.
+Run::
 
     $ pbbt input.yaml output.yaml --train
 
-and accept new output when asked.  PBBT will write output data
-into ``output.yaml``::
+and accept new output when asked.  PBBT will write output data to
+``output.yaml``::
 
     py: print-hello-world
     stdout: |
       Hello, World!
 
-Now you can start PBBT to run the test again and validate the output::
+Now you can start PBBT to *checking* mode, in which it executes test
+cases and compares expected and actual output data::
 
-    # pbbt input.yaml output.yaml
+    $ pbbt input.yaml output.yaml
 
-An input file specifies a single test case, however a special test
-type, called a *test suite*, allows you to specify an unlimited
-number of tests.  For example::
+To add more test cases to ``input.yaml``, create a *test suite*::
 
     title: My tests
     tests:
     - py: |
         print "Hello, World!"
-    - py: |
-        print 2+2
+    - sh: echo Hello, World!
 
-Test suites could be nested or included from another file::
+The file now contains a test suite with an additional test case::
 
-    title: Top-level tests
-    tests:
-    - title: Nested tests
-      tests:
-      - include: other-input.yaml
+    sh: echo Hello, World!
+
+This test case executes a shell command ``echo Hello, World!``
+and returns ``stdout``.  To record expected output, run ``pbbt``
+in training mode again.
 
 
-Input file format and predefined test types
-===========================================
+Built-in Test Types
+===================
 
-By default, PBBT supports a small set of predefined test types.
-Those include:
+Out of the box, PBBT supports a small set of predefined test types:
 
-* a test suite: a collection of test cases;
-* Python test;
-* Shell test;
-* File manipulation tests.
+* Python code test;
+* shell command test;
+* file manipulation tests.
 
-A test case is a record with a specific set of fields.  Some fields
-are mandatory; some could be omitted.
+Also available are special test types:
 
-Common
-------
+* test suite;
+* test include;
+* conditional variables.
 
-The following fields are used by more than one test type.
+Each test type defines the structure of input and output records, that
+is, the set of mandatory and optional fields and the type of field
+values.  In this section, we list all available test types and describe
+their input fields.
 
-Fields:
+Common Fields
+-------------
+
+The following optional fields are available for all test types where
+they make sense:
 
 ``skip``: ``true`` or ``false``
-    Skip the test.
+    On ``true``, skip this test case.
+
 ``if``: variable, list of variables or Python expression
-    Conditional check.
+    On a *variable name*, run this test case only if the variable is
+    defined and not ``false``.
+
+    On a *list of variables*, run this test case only if at least one
+    variable is defined and not ``false``.
+
+    On a *Python expression*, run this test case if the expression
+    evaluates to a ``true`` value.
+
 ``unless``: variable, list of variables or Python expression
-    Negative conditional check.
+    On a *variable name*, skip this test case if the variable is defined
+    and not ``false``.
+
+    On a *list of variables*, skip this test case if at least one
+    variable is defined and not ``false``.
+
+    On a *Python expression*, skip this test case if the expression
+    evaluates to a ``true`` value.
+
 ``ignore``: ``true``, ``false`` or regular expression
-    Ignore output or part of it.
+    On ``true``, do not compare actual and expected output.
+
+    On a *regular expression*, pre-process the actual and expected
+    output before comparing them:
+
+    1. Run the regular expression against the output data and find
+       all matches.
+    2. If the regular expression does not contain ``()`` subgroups,
+       erase all the matches from the output.
+    3. If the regular expression contains one or more ``()`` subgroups,
+       erase the content of the subgroups from the output.
 
 Test Suite
 ----------
 
 A test suite is a collection of test cases.
 
+Test suites could be nested and so they form a tree structure.  A *path*
+formed from suite identifiers can uniquely locate any suite.  By
+convention, we use file-system notation for suite paths.
+
 Fields:
 
-``title``: free-form text
-    The title of the suite
-``suite``: identifier
+``title``: text
+    The title of the suite.
+
+``suite``: identifier (optional)
     The identifier of the suite.  If not set, generated from the title.
-``tests``: list of tests
-    List of nested test cases.
 
-Set
----
+``tests``: list of input records
+    The content of the suite.
 
-This test cast defines a conditional variable.
+Conditional Variables
+---------------------
 
-Fields:
+This test case defines a conditional variable.
 
-``set``: name or a dictionary of names and values
-    Adds a conditional variable.
+Variables could be used in ``if`` and ``unless`` fields to conditionally
+enable or disable a test case.  Variables are also available for Python
+tests as a dictionary ``__pbbt__``.
 
-Include
--------
-
-Loads test data from another file.
+Setting a conditional variable affects all subsequent test cases within
+the same test suite.  Variable values are reset on exit from a suite.
 
 Fields:
 
-``include``: file name
-    The file to load.
+``set``: variable or dictionary of variables
+    On a *variable name*, set the value of the given variable
+    to ``true``.
 
-Python
-------
+    On a *dictionary*, set the values of the given variables.
 
-Executes Python code.
+Include Test
+------------
 
-Fields:
-
-``py``: filename or Python code
-    Either the file name or Python code to execute.
-``stdin``: text data
-    ``stdin`` content.
-``except``: exception name
-    If set, indicates that the code is expected to produce an exception.
-
-Shell
------
-
-Executes a shell command.
+This test case loads and executes a test case from a file.
 
 Fields:
 
-``sh``:
-    The shell command.
-``exit``: ``int``
+``include``: path
+    The file to load.  The file should contain an input test
+    record in YAML format.
+
+Python Code
+-----------
+
+This test case executes Python code and produces ``stdout``.
+
+Fields:
+
+``py``: path or Python code
+    On *Python code*, the source code to execute.
+
+    On a *file name*, the file which contains source code to execute.
+
+``stdin``: text (optional)
+    Content of ``stdin``.
+
+``except``: exception (optional)
+    If set, indicates that the code is expected to raise an exception of
+    the given type.
+
+Shell Command
+-------------
+
+This test case executes a shell command and produces ``stdout``.
+
+Fields:
+
+``sh``: command or list of command and parameters
+    The shell command to execute.
+
+``exit``: integer (optional)
     The expected exit code; ``0`` by default.
 
 Write to File
 -------------
 
+This test case creates a file with the given content.
+
 Fields:
 
-``write``:
-    File name.
-``data``:
-    File content.
+``write``: path
+    The file to create.
+
+``data``: text
+    The file content.
 
 Read from File
 --------------
 
+This test case reads content of a file.
+
 Fields:
 
-``read``:
-    File name.
+``read``: path
+    The file to read.
 
 Remove File
 -----------
 
+This test case removes a file.
+
 Fields:
 
-``rm``:
-    File or a list of files.
+``rm``: path or list of paths
+    File(s) to remove.
 
 Make Directory
 --------------
 
+This test case creates a directory.
+
+Parent directories are also created if necessary.  It is not an error
+if the directory already exists.
+
 Fields:
 
-``mkdir``:
-    Directory name.
+``mkdir``: path
+    The directory to create.
 
 Remove Directory
 ----------------
 
+This test case removes a directory with all its content.
+
+It is not an error if the directory does not exist.
+
 Fields:
 
-``rmdir``:
-    Directory name.
+``rmdir``: path
+    The directory to delete.
+
 
 Defining new test types
 =======================
@@ -269,7 +348,7 @@ Usage::
 Here, ``INPUT`` and ``OUTPUT`` are files which contain input and
 output test data respectively.
 
-The following options are available::
+The following options are available:
 
 ``-h``, ``--help``
     Display usage information and exit.
@@ -338,5 +417,11 @@ API Reference
 ``pbbt.SilentUI``
     Implements ``UI`` for use with ``--quiet`` option
 
+
+.. _YAML: http://yaml.org/
+.. _Prometheus Research, LLC: http://prometheusresearch.com/
+.. _pip: http://pip-installer.org/
+.. _Python Package Index: http://pypi.python.org/pypi/pbbt
+.. _JSON: http://json.org/
 
 .. vim: set spell spelllang=en textwidth=72:

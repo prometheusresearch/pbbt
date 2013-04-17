@@ -629,7 +629,7 @@ class ReadFromFileCase(RunAndCompareMixin):
         return self.Output(self.input.read, data)
 
     def render(self, output):
-        return self.output.data
+        return output.data
 
 
 @Test
