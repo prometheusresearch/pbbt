@@ -8,7 +8,7 @@ from .core import Test, Field, Record
 from .ctl import Control
 from .load import load, dump, locate, Location
 from .run import run, main
-from .std import TestCaseMixin, RunAndCompareMixin
+from .std import BaseCase, MatchCase
 from .ui import UI, ConsoleUI, SilentUI
 
 

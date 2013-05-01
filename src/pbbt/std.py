@@ -35,7 +35,7 @@ def to_identifier(text, trim_re=re.compile(r'^[\W_]+|[\W_]+$'),
     return '-'
 
 
-class TestCaseMixin(object):
+class BaseCase(object):
 
     class Input:
         skip = Field(bool, default=False, order=1e10+1,
@@ -84,7 +84,7 @@ class TestCaseMixin(object):
                 return True
 
     def start(self):
-        lines = [str(self.input)]
+        lines = str(self.input).splitlines()
         location = locate(self.input)
         if location is not None:
             lines.append("(%s)" % location)
@@ -98,7 +98,7 @@ class TestCaseMixin(object):
         return self.check()
 
 
-class RunAndCompareMixin(TestCaseMixin):
+class MatchCase(BaseCase):
 
     class Input:
         ignore = Field(oneof(bool, str), default=False, order=1e5+1,
@@ -111,7 +111,7 @@ class RunAndCompareMixin(TestCaseMixin):
                     re.compile(mapping['ignore'], re.X|re.M)
                 except re.error, exc:
                     raise ValueError("invalid regular expression: %s" % exc)
-            return super(RunAndCompareMixin.Input, cls).__load__(mapping)
+            return super(MatchCase.Input, cls).__load__(mapping)
 
     def run(self):
         raise NotImplementedError("%s.run()" % self.__class__.__name__)
@@ -208,7 +208,7 @@ class RunAndCompareMixin(TestCaseMixin):
 
 
 @Test
-class SetCase(TestCaseMixin):
+class SetCase(BaseCase):
 
     class Input:
         set_ = Field(oneof(str, dictof(str, object)),
@@ -222,7 +222,7 @@ class SetCase(TestCaseMixin):
 
 
 @Test
-class SuiteCase(TestCaseMixin):
+class SuiteCase(BaseCase):
 
     class Input:
         suite = Field(str, default=None,
@@ -354,15 +354,16 @@ class SuiteCase(TestCaseMixin):
                                 next_idx = idx+1
                         else:
                             inserts.append((next_idx, new_case_output))
-                            next_idx += 1
                 else:
                     if id(case.output) in case_output_index:
                         idx = case_output_index[id(case.output)]
                         next_idx = idx+1
+            inserts.sort(key=(lambda t: t[0]))
             for idx, case_output in updates:
                 tests[idx] = case_output
-            for idx, case_output in reversed(sorted(inserts)):
+            for idx, case_output in reversed(inserts):
                 tests.insert(idx, case_output)
+            print "TESTS:", tests
 
         if not tests:
             new_output = None
@@ -385,7 +386,7 @@ class SuiteCase(TestCaseMixin):
 
 
 @Test
-class IncludeCase(TestCaseMixin):
+class IncludeCase(BaseCase):
 
     class Input:
         include = Field(str,
@@ -428,7 +429,7 @@ class IncludeCase(TestCaseMixin):
 
 
 @Test
-class PythonCase(RunAndCompareMixin):
+class PythonCase(MatchCase):
 
     class Input:
         py = Field(str,
@@ -532,7 +533,7 @@ class PythonCase(RunAndCompareMixin):
 
 
 @Test
-class ShellCase(RunAndCompareMixin):
+class ShellCase(MatchCase):
 
     class Input:
         sh = Field(oneof(str, listof(str)),
@@ -592,7 +593,7 @@ class ShellCase(RunAndCompareMixin):
 
 
 @Test
-class WriteToFileCase(TestCaseMixin):
+class WriteToFileCase(BaseCase):
 
     class Input:
         write = Field(str,
@@ -607,7 +608,7 @@ class WriteToFileCase(TestCaseMixin):
 
 
 @Test
-class ReadFromFileCase(RunAndCompareMixin):
+class ReadFromFileCase(MatchCase):
 
     class Input:
         read = Field(str,
@@ -633,7 +634,7 @@ class ReadFromFileCase(RunAndCompareMixin):
 
 
 @Test
-class RemoveFileCase(TestCaseMixin):
+class RemoveFileCase(BaseCase):
 
     class Input:
         rm = Field(oneof(str, listof(str)),
@@ -656,7 +657,7 @@ class RemoveFileCase(TestCaseMixin):
 
 
 @Test
-class MakeDirectoryCase(TestCaseMixin):
+class MakeDirectoryCase(BaseCase):
 
     class Input:
         mkdir = Field(str,
@@ -668,7 +669,7 @@ class MakeDirectoryCase(TestCaseMixin):
 
 
 @Test
-class RemoveDirectoryCase(TestCaseMixin):
+class RemoveDirectoryCase(BaseCase):
 
     class Input:
         rmdir = Field(str,
