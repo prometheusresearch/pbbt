@@ -527,8 +527,7 @@ In this input file, we use two new types of test cases:
 We will write a PBBT extension implementing these test types.
 Create a file ``sql.py`` with the following content::
 
-    from pbbt import Test, Field, BaseCase, MatchCase
-    from pbbt.check import listof
+    from pbbt import Test, Field, BaseCase, MatchCase, listof
     import sqlite3, traceback, csv, StringIO
 
     @Test
@@ -700,9 +699,6 @@ indicate that the test succeeded.
 
 Next, let's implemented ``sql`` test type::
 
-    from pbbt.check import listof
-    [...]
-
     @Test
     class SQLCase(MatchCase):
 
@@ -827,44 +823,207 @@ The following options are available:
 API Reference
 =============
 
-``pbbt.Test(C)``
-    Decorates an implementation of a test type.
+``pbbt.maybe(T)``
+    Pseudo-type for ``isinstance(X, ...)`: checks if ``X`` is an
+    instance of ``T`` or equal to ``None``.
 
-``pbbt.Field(...)``
+``pbbt.oneof(T1, T2, ...)``
+    Pseudo-type for ``isinstance(X, ...)``: checks if ``X`` is an
+    instance of ``T1`` or an instance of ``T2``, etc.
+
+``pbbt.choiceof(values)``
+    Pseudo-type for ``isinstance(X, ...)``: checks if ``X`` is equal to
+    one of the given values.
+
+``pbbt.listof(T)``
+    Pseudo-type for ``isinstance(X, ...)``: checks if ``X`` is a list of
+    elements of ``T``.
+
+``pbbt.tupleof(T1, T2, ...)``
+    Pseudo-type for ``isinstance(X, ...)``: checks if ``X`` is a tuple
+    with fields of types ``T1``, ``T2``, etc.
+
+``pbbt.dictof(T1, T2)``
+    Pseudo-type for ``isinstance(X, ...)``: checks if ``X`` is a
+    dictionary with keys of type ``T1`` and values of type ``T2``.
+
+``pbbt.Test(CaseType)``
+    Registers the given class as a test type.
+
+``pbbt.Field(check=None, default=REQUIRED, order=None, hint=None)``
     Describes a field of an input or an output record.
 
-``pbbt.Record(...)``
+    ``check``
+        The type of the field value.
+
+    ``default``
+        Default value if the field is missing.  If not set, the
+        field is mandatory.
+
+    ``order``
+        If set, allows you to override the default field order.
+
+    ``hint``
+        Short description of the field.
+
+``pbbt.Record(*p_fields, **kv_fields)``
     Base class for all input and output records.
 
+    Nested ``Input`` and ``Output`` classes are converted to ``Record``
+    subclasses the ``Test`` decorator.
+
+    The following methods could be used or overriden:
+
+    ``classmethod __recognizes__(keys)``
+        Returns true if the set of keys contains all mandatory record
+        fields.
+
+    ``classmethod __load__(mapping)``
+        Generates a record instance from a dictionary of record keys and
+        values.
+
+    ``__dump__()``
+        Generates a list of field keys and values.
+
+    ``__complements__(other)``
+        Returns ``True`` if the given record is a complementary output
+        record for the same test case.
+
+    ``__clone__(**kv_fields)``
+        Makes a copy of the record with new values for the given fields.
+
+    ``__str__()``
+        Generates a text representation from the first mandatory field.
+
 ``pbbt.Control(...)``
-    The controller class.
+    Test harness.
 
-``pbbt.load(...)``
-    Loads a test record from a YAML file.
+    The test harness object is passed to test cases as the first
+    argument of the constructor.  The following methods and attributes
+    could be used by test case objects.
 
-``pbbt.dump(...)``
-    Saves a test record to a YAML file.
+    Attributes:
 
-``pbbt.run(...)``
-    Starts the test harness.
+    ``ui``
+        Provides user interaction services.
 
-``pbbt.main(...)``
+    ``training``
+        If set, the harness is in training mode.
+
+    ``purging``
+        If set, the harness is in purging mode.
+
+    ``quiet``
+        If set, only warnings and errors are displayed.
+
+    ``halted``
+        If set, the test process has been halted.
+
+    ``state``
+        Conditional variables.
+
+    ``selection``
+        Selected suites.
+
+    Methods:
+
+    ``passed(text=None)``
+        Attests that the current test case has passed.
+
+    ``failed(text=None)``
+        Attests that the current test case has failed.
+
+    ``updated(text=None)``
+        Attests that output data for the current test case has been
+        updated.
+
+    ``halt(text=None)``
+        Halts testing process.
+
+    ``load_input(path)``
+        Loads input test data from the given file.
+
+    ``load_output(path)``
+        Loads output test data from the given file.
+
+    ``dump_output(path, data)``
+        Saves output test data to the given file.
+
+    ``run(case)``
+        Executes a test case.
+
+    ``__call__(input_path, output_path)``
+        Runs testing process with the given input and output.
+
+``pbbt.locate(record)``
+    Finds the location of the given record.
+
+``pbbt.Location(filename, line)``
+    Position of an input or output record in the YAML document.
+
+``pbbt.run(input_path, output_path=None, **configuration)``
+    Loads test data from the given files and runs the tests.
+
+    Configuration:
+
+    ``ui``
+        User interface controller.
+    ``variables``
+        Predefined conditional variables.
+    ``targets``
+        Selected suites.
+    ``training``
+        Set the harness into training mode.
+    ``purging``
+        Purge stale output data.
+    ``max_errors``
+        Maximum permitted number of failures before the harness halts.
+    ``quiet``
+        Display only warnings and errors.
+
+``pbbt.main()``
     Implements the ``pbbt`` command-line utility.
 
-``pbbt.TestCaseMixin``
+``pbbt.BaseCase``
     Provides common utilities for test type implementations.
 
-``pbbt.RunAndCompareMixin``
+``pbbt.MatchCase``
     Provides common utilities for test type implementations.
 
 ``pbbt.UI``
-    Provides user input/output services.
+    Abstract class for user interaction services.
 
-``pbbt.ConsoleUI``
+    Methods:
+
+    ``part()``
+        Starts a new section.
+
+    ``section()``
+        Starts a subsection.
+
+    ``header(text)``
+        Shows a section header.
+
+    ``notice(text)``
+        Shows a notice.
+
+    ``warning(text)``
+        Shows a warning.
+
+    ``error(text)``
+        Shows an error.
+
+    ``literal(text)``
+        Shows a literal text.
+
+    ``choice(text, *choices)``
+        Asks a single-choice question.
+
+``pbbt.ConsoleUI(stdin=None, stdout=None, stderr=None)``
     Implements ``UI`` for console input/output.
 
-``pbbt.SilentUI``
-    Implements ``UI`` for use with ``--quiet`` option
+``pbbt.SilentUI(backend)``
+    Implements ``UI`` for use with ``--quiet`` option.
 
 
 .. _YAML: http://yaml.org/

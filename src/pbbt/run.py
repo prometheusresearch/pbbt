@@ -41,6 +41,7 @@ for more information, see:
 """
 
 
+# Command-line parameters for `pbbt` script.
 parser = argparse.ArgumentParser(
         description=DESCRIPTION)
 parser.add_argument('-q', '--quiet',
@@ -84,24 +85,28 @@ parser.add_argument('output',
 
 
 def main():
-    # Entry point for `pbbt` script.
+    """Entry point for `pbbt` script."""
+    # Parse command-line parameters.
     args = parser.parse_args()
+    # Load extensions.
     for path in args.extend:
         if os.path.isfile(path):
             exec open(path) in {}
         else:
             __import__(path)
+    # Prepare configuration.
     input = args.input
     output = args.output
-    substitutes = dict(args.define)
-    paths = args.suite or None
+    variables = dict(args.define)
+    targets = args.suite or None
     training = args.train
     purging = args.purge
     max_errors = args.max_errors
     quiet = args.quiet
+    # Execute the tests.
     return run(input, output,
-               substitutes=substitutes,
-               paths=paths,
+               variables=variables,
+               targets=targets,
                training=training,
                purging=purging,
                max_errors=max_errors,

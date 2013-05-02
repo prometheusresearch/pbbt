@@ -8,33 +8,43 @@ import sys
 
 
 class UI(object):
+    """Provides user interaction services."""
 
     def part(self):
+        """Starts a new section."""
         raise NotImplementedError("%s.part()" % self.__class__.__name__)
 
     def section(self):
+        """Starts a subsection."""
         raise NotImplementedError("%s.section()" % self.__class__.__name__)
 
     def header(self, text):
+        """Shows section header."""
         raise NotImplementedError("%s.header()" % self.__class__.__name__)
 
     def notice(self, text):
+        """Shows a notice.""" 
         raise NotImplementedError("%s.notice()" % self.__class__.__name__)
 
     def warning(self, text):
+        """Shows a warning."""
         raise NotImplementedError("%s.warning()" % self.__class__.__name__)
 
     def error(self, text):
+        """Shows an error."""
         raise NotImplementedError("%s.error()" % self.__class__.__name__)
 
     def literal(self, text):
+        """Shows a literal text."""
         raise NotImplementedError("%s.literal()" % self.__class__.__name__)
 
     def choice(self, text, *choices):
+        """Asks a single-choice question."""
         raise NotImplementedError("%s.choice()" % self.__class__.__name__)
 
 
 class ConsoleUI(UI):
+    """Implements :class:`UI` for console."""
 
     def __init__(self, stdin=None, stdout=None, stderr=None):
         self.stdin = stdin or sys.stdin
@@ -102,17 +112,21 @@ class ConsoleUI(UI):
 
 
 class SilentUI(UI):
+    """Implements :class:`UI` for use with ``--quiet`` option."""
 
     def __init__(self, backend):
+        # The backend UI.
         self.backend = backend
         self.queue = []
         self.visible = False
 
     def restart(self):
+        # Flush the queue.
         del self.queue[:]
         self.visible = False
 
     def force(self):
+        # Execute the queued actions.
         self.visible = True
         self.process()
 

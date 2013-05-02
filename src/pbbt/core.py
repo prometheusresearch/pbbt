@@ -219,6 +219,7 @@ class Record(object):
         return self.__class__(*args)
 
     def __iter__(self):
+        # Provided so that ``tuple(self)`` works.
         for field in self.__fields__:
             yield getattr(self, field.attr)
 

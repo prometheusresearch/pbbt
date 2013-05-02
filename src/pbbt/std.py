@@ -262,15 +262,15 @@ class SuiteCase(BaseCase):
         super(SuiteCase, self).__init__(ctl, input, output)
 
     def __call__(self):
-        if self.input.suite not in self.ctl.tree:
+        if self.input.suite not in self.ctl.selection:
             return self.output
-        self.ctl.tree.descend(self.input.suite)
+        self.ctl.selection.descend(self.input.suite)
         self.ctl.state.save()
         try:
             return super(SuiteCase, self).__call__()
         finally:
             self.ctl.state.restore()
-            self.ctl.tree.ascend()
+            self.ctl.selection.ascend()
 
     def load(self):
         if self.input.output is not None and os.path.exists(self.input.output):
@@ -299,7 +299,7 @@ class SuiteCase(BaseCase):
         return cases
 
     def start(self):
-        lines = ["%s [%s]" % (self.input, self.ctl.tree.identify())]
+        lines = ["%s [%s]" % (self.input, self.ctl.selection.identify())]
         location = locate(self.input)
         if location is not None:
             lines.append("(%s)" % location)
