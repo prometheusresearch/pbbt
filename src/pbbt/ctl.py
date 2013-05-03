@@ -14,12 +14,12 @@ import fnmatch
 
 
 class Selection(object):
-    # Set of selected suite path patterns.
+    # Set of path patterns that identify selected suites.
 
     def __init__(self, targets):
         # Path to the current suite.
         self.path = []
-        # Selected suites, relative to the current path
+        # Suite patterns relative to the current path.
         self.targets = set()
         if not targets:
             # Everything is selected.
@@ -38,7 +38,7 @@ class Selection(object):
         self.saved_targets = []
 
     def __contains__(self, suite):
-        # Check if the given suite is selected.
+        # Checks if the given suite is selected.
         if self.targets is None:
             return True
         return any(fnmatch.fnmatchcase(suite, target[0])
@@ -51,9 +51,9 @@ class Selection(object):
         return "".join("/"+suite for suite in self.path)
 
     def descend(self, suite):
-        # Descend down to the given suite.
+        # Descends down to the given suite.
         self.path.append(suite)
-        # Update the set of selected target.
+        # Update the set of selected targets.
         self.saved_targets.append(self.targets)
         if self.targets is not None:
             self.targets = set(target[1:]
@@ -63,7 +63,7 @@ class Selection(object):
                 self.targets = None
 
     def ascend(self):
-        # Exit from the current suite.
+        # Exits from the current suite.
         self.path.pop()
         self.targets = self.saved_targets.pop()
 
@@ -79,11 +79,11 @@ class State(dict):
         self._snapshots = []
 
     def save(self):
-        # Make a snapshot.
+        # Makes a snapshot.
         self._snapshots.append(self.copy())
 
     def restore(self):
-        # Revert to the last snapshot.
+        # Reverts to the last snapshot.
         self.clear()
         self.update(self._snapshots.pop())
 
@@ -202,8 +202,11 @@ class Control(object):
         # Save updated output data.
         if (output_path is not None and
                 new_output is not None and new_output != output):
-            self.ui.notice("saving test output to %r" % output_path)
-            self.dump_output(output_path, new_output)
+                reply = self.ui.choice(None, ('', "save changes"),
+                                             ('d', "discard changes"))
+                if reply == '':
+                    self.ui.notice("saving test output to %r" % output_path)
+                    self.dump_output(output_path, new_output)
         return int(bool(self.failure_num))
 
 

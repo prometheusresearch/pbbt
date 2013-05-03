@@ -42,7 +42,7 @@ class LocationRef(weakref.ref):
         return self
 
     def __init__(self, record, location):
-        super(LocationRef, self).__init__(record, location)
+        super(LocationRef, self).__init__(record, self.cleanup)
 
     @classmethod
     def locate(cls, record):

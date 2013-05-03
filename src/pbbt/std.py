@@ -250,7 +250,7 @@ class SetCase(BaseCase):
 
     class Input:
         set_ = Field(oneof(str, dictof(str, object)),
-                hint="conditional variable or map of variables")
+                hint="conditional variable or dictionary of variables")
 
     def check(self):
         if isinstance(self.input.set_, str):
@@ -483,7 +483,7 @@ class IncludeCase(BaseCase):
         self.ctl.run(case)
 
     def train(self):
-        # Load and run the test case.
+        # Load and run the test case in training mode.
         case = self.load()
         new_case_output = self.ctl.run(case)
         # Update expected output if necessary.
@@ -507,7 +507,7 @@ class PythonCase(MatchCase):
         stdin = Field(str, default='',
                 hint="standard input")
         except_ = Field(str, default=None,
-                hint="name of an expected exception")
+                hint="exception type if an exception is expected")
 
         @property
         def py_key(self):

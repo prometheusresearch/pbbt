@@ -179,6 +179,9 @@ they make sense:
     3. If the regular expression contains one or more ``()`` subgroups,
        erase the content of the subgroups from the output.
 
+    The regular expression is compiled with ``MULTILINE`` and
+    ``VERBOSE`` flags.
+
 Example::
 
     title: Integration with MySQL
@@ -192,7 +195,7 @@ Example::
       if: MYSQL_HOST == 'localhost'
     - py: test-scalar-types.py
       ignore: |
-        Date:.(\d\d\d\d)-(\d\d)-(\d\d)
+        ^Today:.(\d\d\d\d)-(\d\d)-(\d\d)$
     - py: test-array-types.py
       skip: true    # No array type in MySQL
 
@@ -202,7 +205,7 @@ Test Suite
 A test suite is a collection of test cases.
 
 A suite may contain other suites and thus all test suites form a tree
-structure.  A *path* formed by suite identifiers can uniquely locate
+structure.  A *path* formed from suite identifiers can uniquely locate
 any suite.  We use file-system notation for suite paths (e.g.
 ``/path/to/suite``).
 
@@ -235,7 +238,7 @@ Example::
       - py: ./test/pgsql.py
       - py: ./test/mysql.py
 
-In this example, the path to a nested suite *Database Tests* is
+In this example, the path to the *Database Tests* suite is
 ``/all/database-tests``.
 
 Conditional Variables
@@ -256,8 +259,8 @@ the same test suite.  Variable values are reset on exit from the suite.
 Fields:
 
 ``set``: variable or dictionary of variables
-    On a *variable name*, set the value of the given variable
-    to ``True``.
+    On a *variable name*, set the value of the given variable to
+    ``True``.
 
     On a *dictionary*, set the values of the given variables.
 
@@ -295,8 +298,8 @@ This test case loads and executes a test case from a file.
 Fields:
 
 ``include``: path
-    The file to load.  The file should contain an input test
-    record in YAML format.
+    The file to load.  The file should contain an input test record in
+    YAML format.
 
 Example::
 
@@ -323,7 +326,7 @@ Fields:
 ``stdin``: text (optional)
     Content of the standard input.
 
-``except``: exception (optional)
+``except``: exception type (optional)
     If set, indicates that the code is expected to raise an exception of
     the given type.
 
@@ -411,7 +414,7 @@ Example::
 Read from File
 --------------
 
-The output of this test is content of a file.
+The output of this test is the content of a file.
 
 Fields:
 
@@ -442,8 +445,8 @@ Make Directory
 
 This test case creates a directory.
 
-Parent directories are also created if necessary.  It is not an error
-if the directory already exists.
+Parent directories are also created if necessary.  It is not an error if
+the directory already exists.
 
 Fields:
 
@@ -477,13 +480,13 @@ Custom Test Types
 In this section, we discuss how to add custom test types to PBBT.
 
 Suppose we want to test a SQL database by running a series of SQL
-queries and validating that we get expected output.  To implement
-this, we need a way to:
+queries and validating that we get expected output.  To implement this
+testing scheme, we need a way to:
 
 * open a connection to the database;
 * execute a SQL statement and produce a sequence of records.
 
-With this two test types, the input file may look like this::
+The input file may look like this::
 
     title: Database tests
     tests:
@@ -526,6 +529,7 @@ In this input file, we use two new types of test cases:
     Specifies a SQL statement to execute.
 
 We will write a PBBT extension implementing these test types.
+
 Create a file ``sql.py`` with the following content::
 
     from pbbt import Test, Field, BaseCase, MatchCase, listof
@@ -598,7 +602,8 @@ The first line imports some classes and decorators we will use::
 
     from pbbt import Test, Field, BaseCase, MatchCase
 
-To register a test type, use ``@Test`` decorator::
+To register a test type, use ``@Test`` decorator.  Here is a most
+general template::
 
     @Test
     class CustomCase(object):
@@ -623,37 +628,39 @@ To register a test type, use ``@Test`` decorator::
 The argument of the decorator must be a class that adheres the following
 rules:
 
-* The structure of input and output records is described with nested classes
-  ``Input`` and ``Output``.  Record fields are specified using ``Record``
-  descriptor.
+* The structure of input and output records is described with nested
+  classes ``Input`` and ``Output``.  Record fields are specified using
+  ``Field`` descriptor.
 
 * To create a test case, the test harness makes an instance of the class.
   The class constructor accepts three arguments:
 
   ``ctl``
-      Test harness controller.  It is used for reporting test success or
-      failure, user interaction and as a storage for conditional
-      variables.
+      Test harness controller.  It is used for user interaction,
+      reporting test success or failure, and as a storage for
+      conditional variables.
   ``input``
       The input record.
   ``output``
       The expected output record or ``None``.
 
 * The test case is executed by calling its ``__call__()`` method.  This
-  method executes the test case and generated a new output record, which
-  is then compared with the given expected output record.
+  method must run the test case, generate a new output record, and compare
+  it with the given expected output record.
 
-  In the *check* mode, if the output records do not coincide, the method
-  must report a failure.  On the other hand, in the *train* mode, the
-  method may ask the user for confirmation and return the new output
-  record.
+  If the expected and actual output record do not coincide:
 
-PBBT also provides two helper classes: ``BaseCase`` and ``MatchCase``.
-They provide most of the necessary functionality for common types of
-tests.  If you use them, you need to override some special methods.
+  * In the *check* mode, the method must report a failure.
+  * In the *train* mode, the method may ask the user for permission to
+    update expected output.  If expected output is to be updated, the
+    method should return the new output record.
 
-We start with implementing ``connect`` test type, which is implemented
-by ``ConnectCase`` class::
+PBBT also provides two mixin classes: ``BaseCase`` and ``MatchCase``.
+These classes implement most of the necessary functionality for common
+types of tests.
+
+Let's review ``connect`` test type, which is implemented by
+``ConnectCase`` class::
 
     @Test
     class ConnectCase(BaseCase):
@@ -665,9 +672,9 @@ by ``ConnectCase`` class::
             [...]
 
 ``ConnectCase`` is inherited from ``BaseCase``, which is suitable for
-test which produce no output data and are executed for their side effect.
-The nested ``Input`` class definition is used to declare the fields
-of the input record.  In this case, the input record has just one
+test which produce no output data and are executed for their side
+effects.  The nested ``Input`` class definition is used to declare the
+fields of the input record.  In this case, the input record has just one
 text field ``connect``, which contains the name of the database.
 
 Test types inherited from ``BaseCase`` must override abstract method
@@ -692,13 +699,13 @@ Test types inherited from ``BaseCase`` must override abstract method
             else:
                 self.ctl.passed()
 
-This code attempts to create a new database connection and store it
-as a conditional variable ``connect``.  If the attempt fails, it calls
+This code attempts to create a new database connection and store it as a
+conditional variable ``connect``.  If the attempt fails, it calls
 ``ui.literal()`` to display the exception traceback and ``ctl.failed()``
 to report test failure.  Otherwise, ``ctl.passed()`` is called to
 indicate that the test succeeded.
 
-Next, let's implemented ``sql`` test type::
+Next, let's review ``sql`` test type::
 
     @Test
     class SQLCase(MatchCase):
@@ -718,29 +725,23 @@ Next, let's implemented ``sql`` test type::
 
 This test type has both input and output records, which are described
 with ``Input`` and ``Output`` nested classes.  The input record contains
-one field ``sql``, which is a SQL statement to execute.  The output
-record contains two fields: ``sql`` and ``rows``.  Field ``sql`` contains
-the same SQL statement and is used for matching the output record with
-the corresponding input record.  Field ``rows`` contains a list of
-output rows generated by the SQL query.
+one field ``sql``, a SQL query to execute.  The output record contains
+two fields: ``sql`` and ``rows``.  Field ``sql`` contains the same SQL
+query and is used for matching the output record with the complementary
+input record.  Field ``rows`` contains a list of output rows generated
+by the SQL query.
 
-``SQLCase`` is inherited from ``MatchCase``, which is a helper class
+``SQLCase`` is inherited from ``MatchCase``, which is a mixin class
 for test types that produce text output.  Test types inherited from
-``MatchCase`` must override two methods: ``run()`` and ``render()``.
+``MatchCase`` must override two methods:
 
-Method ``run()`` executes the test case and returns the produced
-output record.
+``run()``
+    Executes the test case and returns the produced output record.
+``render(output)``
+    Convert an output record to printable form.
 
-Method ``render()`` converts an output record to text, which is
-reported to the user and used for comparison.
-
-Here, we defined an input record with a single field ``sql`` and output
-record with two fields ``sql`` and ``rows``.  We carry the ``sql``
-parameter to the output record so that we could match corresponding
-input and output records.  The ``rows`` parameters is a list of output
-records generated by the SQL query.
-
-For ``SQLCase``, we render output rows in CSV format::
+In ``SQLCase``, ``render()`` is implemented by converting output rows to
+CSV format::
 
     import csv, StringIO
     [...]
@@ -755,7 +756,7 @@ For ``SQLCase``, we render output rows in CSV format::
             writer.writerows(output.rows)
             return stream.getvalue()
 
-Now, let's define ``run()``::
+Method ``run()`` is implemented as follows::
 
     @Test
     class SQLCase(MatchCase):
@@ -784,7 +785,7 @@ Now, let's define ``run()``::
             return new_output
 
 
-Command-line Reference
+Command-line Interface
 ======================
 
 Usage::
@@ -836,7 +837,7 @@ API Reference
     Pseudo-type for ``isinstance(X, ...)``: checks if ``X`` is equal to
     one of the given values.
 
-``pbbt.listof(T)``
+``pbbt.listof(T, length=None)``
     Pseudo-type for ``isinstance(X, ...)``: checks if ``X`` is a list of
     elements of ``T``.
 
@@ -870,31 +871,33 @@ API Reference
 ``pbbt.Record(*p_fields, **kv_fields)``
     Base class for all input and output records.
 
-    Nested ``Input`` and ``Output`` classes are converted to ``Record``
-    subclasses the ``Test`` decorator.
+    The ``Test`` decorator converts nested ``Input`` and ``Output``
+    classes to ``Record`` subclasses.
 
-    The following methods could be used or overriden:
+    The following methods could be used or overridden:
 
     ``classmethod __recognizes__(keys)``
-        Returns true if the set of keys contains all mandatory record
-        fields.
+        Checks if the set of keys is compatible with the record type.
+
+        The default implementation checks if the set of keys contains
+        all mandatory record fields.
 
     ``classmethod __load__(mapping)``
-        Generates a record instance from a dictionary of record keys and
+        Generates a record instance from a mapping of record keys and
         values.
 
     ``__dump__()``
         Generates a list of field keys and values.
 
     ``__complements__(other)``
-        Returns ``True`` if the given record is a complementary output
-        record for the same test case.
+        Checks if two records are complementary input and output records
+        for the same test case.
 
     ``__clone__(**kv_fields)``
         Makes a copy of the record with new values for the given fields.
 
     ``__str__()``
-        Generates a text representation from the first mandatory field.
+        Generates a printable representation.
 
 ``pbbt.Control(...)``
     Test harness.
@@ -968,7 +971,7 @@ API Reference
     Configuration:
 
     ``ui``
-        User interface controller.
+        User interaction controller.
     ``variables``
         Predefined conditional variables.
     ``targets``
@@ -995,7 +998,7 @@ API Reference
 
     ``train()``
         Runs the test case in train mode.  The default implementation
-        just calls ``check()``.
+        simply calls ``check()``.
 
 ``pbbt.MatchCase``
     Template class for test types which produce output.

@@ -112,7 +112,8 @@ class Record(object):
 
     @classmethod
     def __recognizes__(cls, keys):
-        """Checks if the set of keys contains all required record fields."""
+        """Checks if the set of keys compatible with the record type."""
+        # Check if the key set contains all required record fields.
         if not any(field.required for field in cls.__fields__):
             return False
         return all(field.key in keys for field in cls.__fields__
@@ -120,7 +121,7 @@ class Record(object):
 
     @classmethod
     def __load__(cls, mapping):
-        """Generates a record from a dictionary of field keys and values."""
+        """Generates a record from a mapping of field keys and values."""
         args = []
         for field in cls.__fields__:
             if field.key not in mapping:
@@ -150,8 +151,8 @@ class Record(object):
 
     def __complements__(self, other):
         """
-        Checks if two records are complementary input and output data
-        for the same test case.
+        Checks if two records are complementary input and output records for
+        the same test case.
         """
         # Check if the records belong to the same test type and are of
         # complementary types (input and output or vice versa).
@@ -203,7 +204,7 @@ class Record(object):
             setattr(self, field.attr, arg)
 
     def __clone__(self, **kwds):
-        # Makes a copy with new values for the given fields.
+        """Makes a copy with new values for the given fields."""
         if not kwds:
             return self
         args = []
@@ -235,7 +236,7 @@ class Record(object):
                 tuple(self) != tuple(other))
 
     def __str__(self):
-        # Generates string representation from the first mandatory field.
+        # Generates printable representation from the first mandatory field.
         title_field = None
         for field in self.__fields__:
             if field.required:

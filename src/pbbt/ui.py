@@ -19,7 +19,7 @@ class UI(object):
         raise NotImplementedError("%s.section()" % self.__class__.__name__)
 
     def header(self, text):
-        """Shows section header."""
+        """Shows a section header."""
         raise NotImplementedError("%s.header()" % self.__class__.__name__)
 
     def notice(self, text):
@@ -66,7 +66,7 @@ class ConsoleUI(UI):
 
     def notice(self, text):
         for line in text.splitlines():
-            self.stdout.write("- "+line+"\n")
+            self.stdout.write("* "+line+"\n")
         self.stdout.flush()
 
     def warning(self, text):

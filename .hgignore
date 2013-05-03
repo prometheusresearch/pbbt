@@ -4,10 +4,5 @@ syntax: glob
 *.orig
 .*.sw?
 *.egg-info
-*.env
-*.sqlite
 build
-vm-build
-external
-vendor
 sandbox
