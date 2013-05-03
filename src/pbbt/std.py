@@ -18,16 +18,19 @@ import difflib
 
 
 def is_attribute(text, attr_re=re.compile(r'^[A-Za-z_][0-9A-Za-z_]*$')):
+    # Does it look like an attribute name?
     return (attr_re.match(text) is not None)
 
 
 def is_filename(text,
                 filename_re=re.compile(r'^/?[\w_.-]+(?:/[\w_.-]+)*$')):
+    # Does it look like a filename?
     return (filename_re.match(text) is not None)
 
 
 def to_identifier(text, trim_re=re.compile(r'^[\W_]+|[\W_]+$'),
                         norm_re=re.compile(r'(?:[^\w.]|_)+')):
+    # Generate an identifier from the given text.
     for line in text.splitlines():
         line = norm_re.sub('-', trim_re.sub('', line)).lower()
         if line:
@@ -36,14 +39,17 @@ def to_identifier(text, trim_re=re.compile(r'^[\W_]+|[\W_]+$'),
 
 
 class BaseCase(object):
+    """
+    Template class for all test types.
+    """
 
     class Input:
         skip = Field(bool, default=False, order=1e10+1,
-                     hint="skip the test")
+                hint="skip the test if set to true")
         if_ = Field(oneof(str, listof(str)), default=None, order=1e10+2,
-                    hint="run only the condition is satisfied")
+                hint="skip the test if the condition is not satisfied")
         unless = Field(oneof(str, listof(str)), default=None, order=1e10+3,
-                       hint="run unless the condition is satisfied")
+                hint="skip the test if the condition is satisfied")
 
     def __init__(self, ctl, input, output):
         self.ctl = ctl
@@ -62,6 +68,7 @@ class BaseCase(object):
             return self.check()
 
     def skipped(self):
+        # Check if preconditions are satisfied.
         if self.input.skip:
             return True
         for condition, expect in [(self.input.if_, True),
@@ -84,6 +91,7 @@ class BaseCase(object):
                 return True
 
     def start(self):
+        # Display the header.
         lines = str(self.input).splitlines()
         location = locate(self.input)
         if location is not None:
@@ -92,20 +100,26 @@ class BaseCase(object):
         self.ui.header("\n".join(lines))
 
     def check(self):
+        # Run the case in check mode.
         raise NotImplementedError("%s.check()" % self.__class__.__name__)
 
     def train(self):
+        # Run the case in train mode.
         return self.check()
 
 
 class MatchCase(BaseCase):
+    """
+    Template class for test types which produce output.
+    """
 
     class Input:
         ignore = Field(oneof(bool, str), default=False, order=1e5+1,
-                       hint="ignore the output")
+                hint="ignore differences between expected and actual output")
 
         @classmethod
         def __load__(cls, mapping):
+            # Verify that `ignore` is a valid regular expression.
             if 'ignore' in mapping and isinstance(mapping['ignore'], str):
                 try:
                     re.compile(mapping['ignore'], re.X|re.M)
@@ -114,12 +128,15 @@ class MatchCase(BaseCase):
             return super(MatchCase.Input, cls).__load__(mapping)
 
     def run(self):
+        # Execute the case; returns produced output.
         raise NotImplementedError("%s.run()" % self.__class__.__name__)
 
     def render(self, output):
+        # Convert output to text.
         raise NotImplementedError("%s.render()" % self.__class__.__name__)
 
     def sanitize(self, text):
+        # Remove portions of output matching `ignore` pattern.
         if self.input.ignore is True:
             return ""
         if not self.input.ignore:
@@ -130,8 +147,11 @@ class MatchCase(BaseCase):
 
     @staticmethod
     def _sanitize_replace(match):
+        # If `ignore` pattern does not contain subgroups, remove
+        # the whole match.
         if not match.re.groups:
             return ""
+        # Otherwise, remove subgroups.
         spans = []
         group_start = match.start()
         for idx in range(match.re.groups):
@@ -152,7 +172,8 @@ class MatchCase(BaseCase):
             last_cut = start
         return text
 
-    def display(self, text, new_text):
+    def compare(self, text, new_text):
+        # Display difference between expected and actual output.
         if text is None:
             self.ui.notice("new test output")
             self.ui.literal(new_text)
@@ -167,55 +188,73 @@ class MatchCase(BaseCase):
             self.ui.literal("\n".join(lines))
 
     def check(self):
+        # In checking mode, expected output must be given.
         if self.output is None:
             self.ctl.failed("cannot find expected test output")
             return
+        # Execute the case.
         new_output = self.run()
+        # If the case failed to execute, report test failure and exit.
         if new_output is None:
             self.ctl.failed()
             return
+        # Generate text representation of the output.
         text = self.render(self.output)
         new_text = self.render(new_output)
+        # Compare expected and actual output; report test failure
+        # if they don't match.
         if self.sanitize(text) != self.sanitize(new_text):
-            self.display(text, new_text)
+            self.compare(text, new_text)
             self.ctl.failed("unexpected test output")
-            return
-        self.ctl.passed()
+        else:
+            self.ctl.passed()
 
     def train(self):
+        # Execute the case; produce actual output.
         new_output = self.run()
+        # If the case failed to execute, report test failure and ask the user
+        # whether to halt or continue.
         if new_output is None:
             self.ctl.failed()
             reply = self.ui.choice(None, ('', "halt"), ('c', "continue"))
             if reply == '':
                 self.ctl.halt()
             return self.output
+        # Generate text representation of the output.
         text = self.render(self.output) if self.output is not None else None
         new_text = self.render(new_output)
+        # For new or changed test output, ask the user whether to save/update
+        # the output, ignore the difference or halt.
         if text is None or self.sanitize(text) != self.sanitize(new_text):
-            self.display(text, new_text)
+            self.compare(text, new_text)
             reply = self.ui.choice(None,
                     ('', "record"), ('s', "skip"), ('h', "halt"))
             if reply == '':
                 self.ctl.updated()
                 return new_output
-            if reply == 'h':
-                self.ctl.halt()
-            self.ctl.failed()
+            else:
+                if reply == 'h':
+                    self.ctl.halt()
+                self.ctl.failed()
+                return self.output
+        else:
+            self.ctl.passed()
             return self.output
-        self.ctl.passed()
-        return self.output
 
 
 @Test
 class SetCase(BaseCase):
+    """
+    Define a conditional variable or a set of conditional variables.
+    """
 
     class Input:
         set_ = Field(oneof(str, dictof(str, object)),
-                     hint="set a conditional variable")
+                hint="conditional variable or map of variables")
 
     def check(self):
         if isinstance(self.input.set_, str):
+            # If value is not given, assume `True`.
             self.ctl.state[self.input.set_] = True
         else:
             self.ctl.state.update(self.input.set_)
@@ -223,16 +262,19 @@ class SetCase(BaseCase):
 
 @Test
 class SuiteCase(BaseCase):
+    """
+    Collection of test cases.
+    """
 
     class Input:
         suite = Field(str, default=None,
-                      hint="suite identifier")
+                hint="identifier of the suite")
         title = Field(str,
-                      hint="suite title")
+                hint="title of the suite")
         output = Field(str, default=None,
-                       hint="file with expected output")
+                hint="file containing expected output for suite tests")
         tests = Field(listof(Record),
-                      hint="list of test inputs")
+                hint="test inputs")
 
         @classmethod
         def __recognizes__(cls, keys):
@@ -240,6 +282,7 @@ class SuiteCase(BaseCase):
 
         @classmethod
         def __load__(cls, mapping):
+            # Generate `suite` from `title` if the former is not given.
             if 'suite' not in mapping and 'title' in mapping:
                 mapping['suite'] = to_identifier(mapping['title'])
             return super(SuiteCase.Input, cls).__load__(mapping)
@@ -254,25 +297,27 @@ class SuiteCase(BaseCase):
 
     class Output:
         suite = Field(str,
-                      hint="suite identifier")
+                hint="identifier of the suite")
         tests = Field(listof(Record),
-                      hint="list of test outputs")
-
-    def __init__(self, ctl, input, output):
-        super(SuiteCase, self).__init__(ctl, input, output)
+                hint="test outputs")
 
     def __call__(self):
+        # Check if the suite was selected.
         if self.input.suite not in self.ctl.selection:
             return self.output
+        # Update the selection tree and make a snapshot of conditional
+        # variables.
         self.ctl.selection.descend(self.input.suite)
         self.ctl.state.save()
         try:
             return super(SuiteCase, self).__call__()
         finally:
+            # Restore the selection tree and conditional variables.
             self.ctl.state.restore()
             self.ctl.selection.ascend()
 
     def load(self):
+        # Get expected output.
         if self.input.output is not None and os.path.exists(self.input.output):
             output = self.ctl.load_output(self.input.output)
             if self.input.__complements__(output):
@@ -280,25 +325,34 @@ class SuiteCase(BaseCase):
         return self.output
 
     def complement(self, input, output):
+        # Matches input and output test data; returns a list of test cases.
+
+        # Test cases.
         cases = []
+        # Input records.
         case_inputs = input.tests
+        # Output records.
         case_outputs = output.tests[:] if output is not None else []
+        # Generate triples of `(test_type, input, output)`.
         groups = []
         for case_input in case_inputs:
             case_type = case_input.__owner__
             for idx, case_output in enumerate(case_outputs):
+                # FIXME: O(N^2).
                 if case_input.__complements__(case_output):
                     groups.append((case_type, case_input, case_output))
                     del case_outputs[idx]
                     break
             else:
                 groups.append((case_type, case_input, None))
+        # Generate and return test cases.
         for case_type, case_input, case_output in groups:
             case = case_type(self.ctl, case_input, case_output)
             cases.append(case)
         return cases
 
     def start(self):
+        # Display suite title.
         lines = ["%s [%s]" % (self.input, self.ctl.selection.identify())]
         location = locate(self.input)
         if location is not None:
@@ -307,6 +361,7 @@ class SuiteCase(BaseCase):
         self.ui.header("\n".join(lines))
 
     def check(self):
+        # Generate and execute nested test cases.
         output = self.load()
         cases = self.complement(self.input, output)
         for case in cases:
@@ -315,8 +370,10 @@ class SuiteCase(BaseCase):
                 break
 
     def train(self):
+        # Generate nested test cases.
         output = self.load()
         cases = self.complement(self.input, output)
+        # Mapping from case to produced output.
         new_case_output_map = {}
         for case in cases:
             new_case_output = self.ctl.run(case)
@@ -325,8 +382,12 @@ class SuiteCase(BaseCase):
             if self.ctl.halted:
                 break
 
+        # Generate suite output.
+
+        # Original output data.
         tests = output.tests[:] if output is not None else []
 
+        # If `--purge` is given, generate output from scratch.
         if self.ctl.purging and not self.ctl.halted:
             tests = []
             for case in cases:
@@ -336,6 +397,7 @@ class SuiteCase(BaseCase):
                 if case_output is not None:
                     tests.append(case_output)
 
+        # Otherwise, update original output data.
         elif new_case_output_map:
             inserts = []
             updates = []
@@ -363,8 +425,8 @@ class SuiteCase(BaseCase):
                 tests[idx] = case_output
             for idx, case_output in reversed(inserts):
                 tests.insert(idx, case_output)
-            print "TESTS:", tests
 
+        # Generate new output record.
         if not tests:
             new_output = None
         elif output is not None and tests == output.tests:
@@ -372,6 +434,7 @@ class SuiteCase(BaseCase):
         else:
             new_output = self.Output(suite=self.input.suite, tests=tests)
 
+        # Save output data.
         if self.input.output is not None:
             if output is self.output or output != new_output:
                 reply = self.ui.choice(None, ('', "save changes"),
@@ -387,18 +450,20 @@ class SuiteCase(BaseCase):
 
 @Test
 class IncludeCase(BaseCase):
+    """Loads a test case from a file."""
 
     class Input:
         include = Field(str,
-                        hint="file with tests")
+                hint="file with input test data")
 
     class Output:
         include = Field(str,
-                        hint="file with tests")
+                hint="file with input test data")
         output = Field(Record,
-                       hint="expected output")
+                hint="expected output")
 
     def load(self):
+        # Loads a test case from a file.
         included_input = self.ctl.load_input(self.input.include)
         case_type = included_input.__owner__
         included_output = None
@@ -409,15 +474,19 @@ class IncludeCase(BaseCase):
         return case
 
     def start(self):
+        # Do not show any header.
         pass
 
     def check(self):
+        # Load and run the test case.
         case = self.load()
         self.ctl.run(case)
 
     def train(self):
+        # Load and run the test case.
         case = self.load()
         new_case_output = self.ctl.run(case)
+        # Update expected output if necessary.
         if new_case_output is None:
             output = None
         elif new_case_output == case.output:
@@ -430,29 +499,34 @@ class IncludeCase(BaseCase):
 
 @Test
 class PythonCase(MatchCase):
+    """Executes Python code."""
 
     class Input:
         py = Field(str,
-                   hint="file name or source code")
+                hint="source code or file name")
         stdin = Field(str, default='',
-                      hint="standard input")
+                hint="standard input")
         except_ = Field(str, default=None,
-                        hint="expected exception name")
+                hint="name of an expected exception")
 
         @property
         def py_key(self):
+            # If a file name is given, use it as an identifier.
             if is_filename(self.py):
                 return self.py
+            # Otherwise, generate an identifier from source code.
             else:
                 return to_identifier(self.py)
 
         @property
         def py_as_filename(self):
+            # If Python file is provided, return it.
             if is_filename(self.py):
                 return self.py
 
         @property
         def py_as_source(self):
+            # If source code is provided, return it.
             if not is_filename(self.py):
                 return self.py
 
@@ -466,18 +540,17 @@ class PythonCase(MatchCase):
 
     class Output:
         py = Field(str,
-                   hint="file name or source code identifier")
+                hint="source code identifier or file name")
         stdout = Field(str,
-                       hint="expected standard output")
+                hint="standard output")
 
         @property
         def py_key(self):
-            if is_filename(self.py):
-                return self.py
-            else:
-                return to_identifier(self.py)
+            # To match `Input.py_key`.
+            return self.py
 
     def run(self):
+        # Get source code.
         filename = self.input.py_as_filename
         if filename is not None:
             try:
@@ -490,6 +563,8 @@ class PythonCase(MatchCase):
         else:
             source = self.input.py_as_source
             filename = "<%s>" % locate(self.input)
+
+        # Execute the code.
         old_stdin = sys.stdin
         old_stdout = sys.stdout
         old_stderr = sys.stderr
@@ -510,7 +585,12 @@ class PythonCase(MatchCase):
             sys.stdin = old_stdin
             sys.stdout = old_stdout
             sys.stderr = old_stderr
+
+        # Generate new output record.
         new_output = self.Output(py=self.input.py_key, stdout=stdout)
+
+        # Complain if we got an unexpected exception or didn't get an expected
+        # exception.
         if exc_info is not None:
             exc_name = exc_info[0].__name__
             if self.input.except_ is None or self.input.except_ != exc_name:
@@ -526,6 +606,7 @@ class PythonCase(MatchCase):
                 self.ui.warning("expected exception %r did not occur"
                                 % self.input.except_)
                 return
+
         return new_output
 
     def render(self, output):
@@ -534,18 +615,19 @@ class PythonCase(MatchCase):
 
 @Test
 class ShellCase(MatchCase):
+    """Executes a shell script."""
 
     class Input:
         sh = Field(oneof(str, listof(str)),
-                   hint="command line")
+                hint="command line")
         cd = Field(str, default=None,
-                   hint="working directory")
+                hint="working directory")
         environ = Field(dictof(str, str), default=None,
-                        hint="environment variables")
+                hint="environment variables")
         stdin = Field(str, default='',
-                      hint="standard input")
+                hint="standard input")
         exit = Field(int, default=0,
-                     hint="expected exit code")
+                hint="expected exit code")
 
         def __str__(self):
             if isinstance(self.sh, str):
@@ -555,11 +637,12 @@ class ShellCase(MatchCase):
 
     class Output:
         sh = Field(oneof(str, listof(str)),
-                   hint="command line")
+                hint="command line")
         stdout = Field(str,
-                       hint="expected standard output")
+                hint="standard output")
 
     def run(self):
+        # Prepare the command.
         command = self.input.sh
         if isinstance(command, str):
             command = command.split()
@@ -567,6 +650,7 @@ class ShellCase(MatchCase):
         if self.input.environ:
             environ = os.environ.copy()
             environ.update(self.input.environ)
+        # Execute the command.
         try:
             proc = subprocess.Popen(command,
                                     stdout=subprocess.PIPE,
@@ -578,14 +662,17 @@ class ShellCase(MatchCase):
             self.ui.literal(str(exc))
             self.ui.warning("failed to execute the process")
             return
+        # Make sure `stdout` is valid UTF-8 string.
         stdout = stdout.decode('utf-8', 'replace')
         if not isinstance(stdout, str):
             stdout = stdout.encode('utf-8')
+        # Complain on unexpected exit code.
         if proc.returncode != self.input.exit:
             if stdout:
                 self.ui.literal(stdout)
             self.ui.warning("unexpected exit code (%s)" % proc.returncode)
             return
+        # Generate new output record.
         return self.Output(sh=self.input.sh, stdout=stdout)
 
     def render(self, output):
@@ -594,12 +681,13 @@ class ShellCase(MatchCase):
 
 @Test
 class WriteToFileCase(BaseCase):
+    """Creates a file with the given content."""
 
     class Input:
         write = Field(str,
-                      hint="file name")
+                hint="file name")
         data = Field(str,
-                     hint="file content")
+                hint="file content")
 
     def check(self):
         stream = open(self.input.write, 'wb')
@@ -609,20 +697,21 @@ class WriteToFileCase(BaseCase):
 
 @Test
 class ReadFromFileCase(MatchCase):
+    """Reads content of a file."""
 
     class Input:
         read = Field(str,
-                     hint="file name")
+                hint="file name")
 
     class Output:
         read = Field(str,
-                     hint="file name")
+                hint="file name")
         data = Field(str,
-                     hint="expected file content")
+                hint="file content")
 
     def run(self):
         if not os.path.exists(self.input.read):
-            self.ctl.fail("missing file %r" % self.input.read)
+            self.ui.warning("missing file %r" % self.input.read)
             return
         stream = open(self.input.read, 'rb')
         data = stream.read()
@@ -635,10 +724,11 @@ class ReadFromFileCase(MatchCase):
 
 @Test
 class RemoveFileCase(BaseCase):
+    """Deletes a file or a list of files."""
 
     class Input:
         rm = Field(oneof(str, listof(str)),
-                   hint="file or a list of files")
+                hint="file or a list of files")
 
         def __str__(self):
             if isinstance(self.rm, str):
@@ -658,10 +748,11 @@ class RemoveFileCase(BaseCase):
 
 @Test
 class MakeDirectoryCase(BaseCase):
+    """Creates a directory."""
 
     class Input:
         mkdir = Field(str,
-                      hint="directory name")
+                hint="directory name")
 
     def check(self):
         if not os.path.isdir(self.input.mkdir):
@@ -670,10 +761,11 @@ class MakeDirectoryCase(BaseCase):
 
 @Test
 class RemoveDirectoryCase(BaseCase):
+    """Deletes a directory."""
 
     class Input:
         rmdir = Field(str,
-                      hint="directory name")
+                hint="directory name")
 
     def check(self):
         if os.path.exists(self.input.rmdir):

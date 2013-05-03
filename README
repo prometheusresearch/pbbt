@@ -411,7 +411,7 @@ Example::
 Read from File
 --------------
 
-This test case reads content of a file.
+The output of this test is content of a file.
 
 Fields:
 
@@ -425,7 +425,8 @@ Example::
 Remove File
 -----------
 
-This test case removes a file.
+This test case removes a file.  It is not an error if the file does not
+exist.
 
 Fields:
 
@@ -790,8 +791,8 @@ Usage::
 
     pbbt [<options>] INPUT [OUTPUT]
 
-Here, ``INPUT`` and ``OUTPUT`` are files which contain input and
-output test data respectively.
+Here, ``INPUT`` and ``OUTPUT`` are files which contain input and output
+test data respectively.
 
 The following options are available:
 
@@ -824,7 +825,7 @@ API Reference
 =============
 
 ``pbbt.maybe(T)``
-    Pseudo-type for ``isinstance(X, ...)`: checks if ``X`` is an
+    Pseudo-type for ``isinstance(X, ...)``: checks if ``X`` is an
     instance of ``T`` or equal to ``None``.
 
 ``pbbt.oneof(T1, T2, ...)``
@@ -985,10 +986,27 @@ API Reference
     Implements the ``pbbt`` command-line utility.
 
 ``pbbt.BaseCase``
-    Provides common utilities for test type implementations.
+    Template class suitable for most test types.
+
+    Subclasses need to override the following methods:
+
+    ``check()``
+        Runs the test case in check mode.
+
+    ``train()``
+        Runs the test case in train mode.  The default implementation
+        just calls ``check()``.
 
 ``pbbt.MatchCase``
-    Provides common utilities for test type implementations.
+    Template class for test types which produce output.
+
+    Subclasses need to override the following methods:
+
+    ``run()``
+        Executes the case; returns produced output.
+
+    ``render(output)``
+        Converts output record to text.
 
 ``pbbt.UI``
     Abstract class for user interaction services.
