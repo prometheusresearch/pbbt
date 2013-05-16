@@ -573,6 +573,8 @@ class PythonCase(MatchCase):
         sys.stderr = sys.stdout
         try:
             context = {}
+            context['__name__'] = '__main__'
+            context['__file__'] = filename
             context['__pbbt__'] = self.state
             exc_info = None
             try:
