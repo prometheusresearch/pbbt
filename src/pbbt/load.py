@@ -258,6 +258,8 @@ class TestDumper(BaseYAMLDumper):
     # Saves test input/output data to a file.
 
     def __init__(self, stream, **keywords):
+        if 'explicit_start' not in keywords:
+            keywords['explicit_start'] = True
         super(TestDumper, self).__init__(stream, **keywords)
         self.check_version()
 
