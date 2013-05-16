@@ -4,7 +4,7 @@
 #
 
 
-from .check import maybe, oneof, choiceof, listof, tupleof, dictof
+from .check import maybe, oneof, choiceof, listof, tupleof, dictof, raises
 from .core import Test, Field, Record
 from .ctl import Control
 from .load import locate, Location

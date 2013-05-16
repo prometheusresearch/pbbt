@@ -118,3 +118,55 @@ class dictof(check):
                                    self.value_check.__name__)
 
 
+class ExceptionInfo(object):
+    """Information about a raised exception."""
+
+    def __init__(self):
+        self.type = None
+        self.value = None
+        self.traceback = None
+
+    def update(self, type, value, traceback):
+        self.type = type
+        self.value = value
+        self.traceback = traceback
+
+    def __nonzero__(self):
+        return (self.type is not None)
+
+    def __str__(self):
+        return "%s: %s" % (self.type.__name__, self.value)
+
+    def __repr__(self):
+        return "<%s %s>" % (self.__class__.__name__,
+                            self.type.__name__ if self.type else None)
+
+
+class ExceptionCatcher(object):
+    """Intersepts exceptions of the given type."""
+
+    def __init__(self, exc_type):
+        self.exc_type = exc_type
+        self.exc_info = ExceptionInfo()
+
+    def __enter__(self):
+        return self.exc_info
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        assert exc_type is not None, \
+                "expected exception %s" % self.exc_type.__name__
+        if issubclass(exc_type, self.exc_type):
+            self.exc_info.update(exc_type, exc_value, exc_traceback)
+            return True
+
+
+def raises(exc_type, callable=None, *args, **kwds):
+    """Verifies that the code produces an exception of the given type."""
+    if callable is not None:
+        with raises(exc_type) as exc_info:
+            callable(*args, **kwds)
+        return exc_info
+    else:
+        return ExceptionCatcher(exc_type)
+
+

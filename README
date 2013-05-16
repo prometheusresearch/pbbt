@@ -849,6 +849,14 @@ API Reference
     Pseudo-type for ``isinstance(X, ...)``: checks if ``X`` is a
     dictionary with keys of type ``T1`` and values of type ``T2``.
 
+``pbbt.raises(E)``
+    Use with ``with`` clause to verify that the nested block raises an
+    exception of the given type.
+
+``pbbt.raises(E, fn, *args, **kwds)``
+    Verifies that the function call ``fn(*args, **kwds)`` raises an
+    exception of the given type.
+
 ``pbbt.Test(CaseType)``
     Registers the given class as a test type.
 
