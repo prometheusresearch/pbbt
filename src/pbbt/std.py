@@ -571,22 +571,38 @@ class PythonCase(MatchCase):
         sys.stdin = StringIO.StringIO(self.input.stdin)
         sys.stdout = StringIO.StringIO()
         sys.stderr = sys.stdout
+        context = self.state.get('__py__', {}).copy()
         try:
-            context = {}
             context['__name__'] = '__main__'
             context['__file__'] = filename
             context['__pbbt__'] = self.state
             exc_info = None
             try:
-                code = compile(source, filename, 'exec')
-                exec code in context
+                try:
+                    code = compile(source, filename, 'eval')
+                    is_expr = True
+                except SyntaxError:
+                    code = compile(source, filename, 'exec')
+                    is_expr = False
+                if is_expr:
+                    output = eval(code, context)
+                    if output is not None:
+                        sys.stdout.write(repr(output)+"\n")
+                else:
+                    exec code in context
             except:
                 exc_info = sys.exc_info()
+                if self.input.except_ is not None and \
+                        self.input.except_ == exc_info[0].__name__:
+                    sys.stdout.write(str(exc_info[1])+"\n")
             stdout = sys.stdout.getvalue()
         finally:
             sys.stdin = old_stdin
             sys.stdout = old_stdout
             sys.stderr = old_stderr
+            if '__pbbt__' in context:
+                del context['__pbbt__']
+            self.state['__py__'] = context
 
         # Generate new output record.
         new_output = self.Output(py=self.input.py_key, stdout=stdout)
