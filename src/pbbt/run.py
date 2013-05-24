@@ -8,6 +8,8 @@ from .ctl import Control
 import re
 import argparse
 import os, os.path
+import ConfigParser
+import yaml
 
 
 def variable(text):
@@ -45,17 +47,20 @@ for more information, see:
 parser = argparse.ArgumentParser(
         description=DESCRIPTION)
 parser.add_argument('-q', '--quiet',
+        default=None,
         action='store_true',
         help="display warnings and errors only")
 parser.add_argument('-T', '--train',
+        default=None,
         action='store_true',
         help="run tests in the training mode")
 parser.add_argument('-P', '--purge',
+        default=None,
         action='store_true',
         help="purge stale output data")
 parser.add_argument('-M', '--max-errors',
         type=int,
-        default=0,
+        default=None,
         metavar="N",
         help="halt after N errors")
 parser.add_argument('-D', '--define',
@@ -76,6 +81,7 @@ parser.add_argument('-S', '--suite',
         metavar="ID",
         help="run a specific test suite")
 parser.add_argument('input',
+        nargs='?',
         metavar="INPUT",
         help="file with input data")
 parser.add_argument('output',
@@ -86,23 +92,106 @@ parser.add_argument('output',
 
 def main():
     """Entry point for `pbbt` script."""
+    # Default configuration.
+    extend = []
+    input = None
+    output = None
+    variables = {}
+    targets = None
+    training = False
+    purging = False
+    max_errors = 0
+    quiet = False
+
+    # Load configuration from setup.cfg.
+    if os.path.exists('setup.cfg'):
+        setup_cfg = ConfigParser.SafeConfigParser()
+        setup_cfg.read('setup.cfg')
+        if setup_cfg.has_option('pbbt', 'extend'):
+            lines = setup_cfg.get('pbbt', 'extend')
+            extend.extend(lines.split())
+        if setup_cfg.has_option('pbbt', 'input'):
+            input = setup_cfg.get('pbbt', 'input')
+        if setup_cfg.has_option('pbbt', 'output'):
+            output = setup_cfg.get('pbbt', 'output')
+        if setup_cfg.has_option('pbbt', 'define'):
+            lines = setup_cfg.get('pbbt', 'define')
+            variables.update(variable(line) for line in lines.split())
+        if setup_cfg.has_option('pbbt', 'suite'):
+            lines = setup_cfg.get('pbbt', 'suite')
+            targets = lines.split()
+        if setup_cfg.has_option('pbbt', 'train'):
+            training = setup_cfg.getboolean('pbbt', 'train')
+        if setup_cfg.has_option('pbbt', 'purge'):
+            purging = setup_cfg.getboolean('pbbt', 'purge')
+        if setup_cfg.has_option('pbbt', 'max_errors'):
+            max_errors = setup_cfg.getint('pbbt', 'max_errors')
+        if setup_cfg.has_option('pbbt', 'quiet'):
+            quiet = setup_cfg.getboolean('pbbt', 'quiet')
+
+    # Load configuration from pbbt.yaml.
+    if os.path.exists('pbbt.yaml'):
+        try:
+            pbbt_cfg = yaml.safe_load(open('pbbt.yaml'))
+        except yaml.YAMLError, error:
+            print str(error)
+            return "pbbt: error: ill-formed configuration file: pbbt.yaml"
+        if pbbt_cfg is None:
+            pbbt_cfg = {}
+        if not isinstance(pbbt_cfg, dict):
+            return "pbbt: error: ill-formed configuration file: pbbt.yaml"
+        if 'extend' in pbbt_cfg:
+            extend.extend(pbbt_cfg['extend'])
+        if 'input' in pbbt_cfg:
+            input = pbbt_cfg['input']
+        if 'output' in pbbt_cfg:
+            output = pbbt_cfg['output']
+        if 'define' in pbbt_cfg:
+            variables.update(pbbt_cfg['define'])
+        if 'suite' in pbbt_cfg:
+            if isinstance(pbbt_cfg['suite'], str):
+                targets = pbbt_cfg['suite'].split()
+            else:
+                targets = pbbt_cfg['suite']
+        if 'train' in pbbt_cfg:
+            training = pbbt_cfg['train']
+        if 'purge' in pbbt_cfg:
+            purging = pbbt_cfg['purge']
+        if 'max-errors' in pbbt_cfg:
+            max_errors = pbbt_cfg['max-errors']
+        if 'quiet' in pbbt_cfg:
+            quiet = pbbt_cfg['quiet']
+
     # Parse command-line parameters.
     args = parser.parse_args()
+    if args.input:
+        input = args.input
+    if args.output:
+        output = args.output
+    variables.update(args.define)
+    if args.suite:
+        targets = args.suite
+    if args.train is not None:
+        training = args.train
+    if args.purge is not None:
+        purging = args.purge
+    if args.max_errors is not None:
+        max_errors = args.max_errors
+    if args.quiet is not None:
+        quiet = args.quiet
+
+    # Check if input file was provided.
+    if input is None:
+        parser.print_help()
+        return "pbbt: error: input file is not specified"
+
     # Load extensions.
-    for path in args.extend:
+    for path in extend:
         if os.path.isfile(path):
             exec open(path) in {}
         else:
             __import__(path)
-    # Prepare configuration.
-    input = args.input
-    output = args.output
-    variables = dict(args.define)
-    targets = args.suite or None
-    training = args.train
-    purging = args.purge
-    max_errors = args.max_errors
-    quiet = args.quiet
+
     # Execute the tests.
     return run(input, output,
                variables=variables,

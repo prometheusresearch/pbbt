@@ -931,6 +931,19 @@ The following options are available:
 ``-S ID``, ``--suite ID``
     Run a specific test suite.
 
+PBBT can also read configuration from the following files:
+
+``setup.cfg``
+    This file is in INI format with  PBBT settings defined in section
+    ``[pbbt]``.  The following parameters are recognized: ``extend``,
+    ``input``, ``output``, ``define``, ``suite``, ``train``, ``purge``,
+    ``max_errors``, ``quiet``.
+
+``pbbt.yaml``
+    This file must be a YAML file with the following keys: ``extend``,
+    ``input``, ``output``, ``define``, ``suite``, ``train``, ``purge``,
+    ``max-errors``, ``quiet``.
+
 
 API Reference
 =============
