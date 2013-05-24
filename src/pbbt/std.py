@@ -9,6 +9,7 @@ from .check import listof, oneof, dictof
 from .load import locate
 import sys
 import os, os.path
+import glob
 import shutil
 import re
 import StringIO
@@ -788,5 +789,57 @@ class RemoveDirectoryCase(BaseCase):
     def check(self):
         if os.path.exists(self.input.rmdir):
             shutil.rmtree(self.input.rmdir)
+
+
+@Test
+class DoctestCase(BaseCase):
+    """Runs ``doctest`` tests."""
+
+    class Input:
+        doctest = Field(str,
+                hint="file pattern")
+
+    def check(self):
+        # Convert the file pattern to a list of files.
+        paths = sorted(glob.glob(self.input.doctest))
+        if not paths:
+            self.ctl.failed("missing file %r" % self.input.doctest)
+            return
+
+        # Initialize doctest.
+        import doctest
+        parser = doctest.DocTestParser()
+        runner = doctest.DocTestRunner(verbose=False, optionflags=0)
+        report_stream = StringIO.StringIO()
+
+        # Run all tests.
+        for path in paths:
+            name = os.path.basename(path)
+            text = open(path).read()
+            globs = { '__name__': '__main__' }
+            test = parser.get_doctest(text, globs, name, path, 0)
+            runner.run(test, out=report_stream.write)
+
+        # Prepare test summary.
+        old_stdout = sys.stdout
+        sys.stdout = report_stream
+        result = runner.summarize()
+        self.stdout = old_stdout
+        report = report_stream.getvalue()
+
+        # If any of the tests fail, report the failures.
+        if result.failed:
+            if result.failed == 1:
+                self.ctl.failed("1 test failed")
+            else:
+                self.ctl.failed("%s tests failed" % result.failed)
+            self.ui.literal(report)
+            if self.ctl.training:
+                reply = self.ui.choice(None, ('', "halt"), ('c', "continue"))
+                if reply == '':
+                    self.ctl.halt()
+            return
+
+        self.ctl.passed()
 
 

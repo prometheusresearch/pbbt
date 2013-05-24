@@ -2,7 +2,6 @@
   PBBT -- Pluggable Black-Box Testing toolkit
 ***********************************************
 
-
 .. contents:: Table of Contents
 
 
@@ -128,6 +127,7 @@ Also available are special test types:
 * test suite;
 * include;
 * conditional variables.
+* gateway to other test systems.
 
 Each test type defines the structure of input and output records, that
 is, the set of mandatory and optional fields and the type of field
@@ -472,6 +472,20 @@ Fields:
 Example::
 
     rmdir: test/tmp
+
+Doctest
+-------
+
+This test case executes ``doctest`` on a set of files.
+
+Fields:
+
+``doctest``: path patterns
+    Files with doctest sessions.
+
+Example::
+
+    doctest: test/test_*.rst
 
 
 Custom Test Types
