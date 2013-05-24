@@ -502,6 +502,21 @@ Example::
     unittest: test/test_*.py
 
 
+Pytest
+------
+
+This test case executes ``py.test`` test suite.
+
+Fields:
+
+``pytest``: path pattern
+    Files with py.test tests.
+
+Example::
+
+    pytest: test/test_*.py
+
+
 Custom Test Types
 =================
 

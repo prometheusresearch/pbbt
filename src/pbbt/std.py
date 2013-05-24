@@ -827,12 +827,9 @@ class DoctestCase(BaseCase):
         self.stdout = old_stdout
         report = report_stream.getvalue()
 
-        # If any of the tests fail, report the failures.
+        # Report failures.
         if result.failed:
-            if result.failed == 1:
-                self.ctl.failed("1 test failed")
-            else:
-                self.ctl.failed("%s tests failed" % result.failed)
+            self.ctl.failed("some tests failed")
             self.ui.literal(report)
             if self.ctl.training:
                 reply = self.ui.choice(None, ('', "halt"), ('c', "continue"))
@@ -868,6 +865,57 @@ class UnittestCase(BaseCase):
 
         # Report failures.
         if not result.wasSuccessful():
+            self.ctl.failed("some tests failed")
+            self.ui.literal(report)
+            if self.ctl.training:
+                reply = self.ui.choice(None, ('', "halt"), ('c', "continue"))
+                if reply == '':
+                    self.ctl.halt()
+            return
+
+        self.ctl.passed()
+
+
+@Test
+class PytestCase(BaseCase):
+    """Runs ``pytest`` tests."""
+
+    class Input:
+        pytest = Field(str,
+                hint="file pattern")
+
+    def check(self):
+        # Check if py.test is installed.
+        try:
+            import pytest
+        except ImportError:
+            self.ctl.failed("py.test is not installed")
+            return
+
+        # Convert the file pattern to a list of files.
+        paths = sorted(glob.glob(self.input.pytest))
+        if not paths:
+            self.ctl.failed("missing file %r" % self.input.pytest)
+            return
+
+        # Patch terminalwriter to set text width to 70.
+        import py._io.terminalwriter
+        old_get_terminal_width = py._io.terminalwriter.get_terminal_width
+        py._io.terminalwriter.get_terminal_width = lambda: 70
+
+        # Redirect output to StringIO and run the test suite.
+        report_stream = StringIO.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = report_stream
+        result = pytest.main(paths+['-q'])
+        sys.stdout = old_stdout
+        report = report_stream.getvalue()
+
+        # Restore terminalwriter.
+        py._io.terminalwriter.get_terminal_width = old_get_terminal_width
+
+        # Report failures.
+        if result != 0:
             self.ctl.failed("some tests failed")
             self.ui.literal(report)
             if self.ctl.training:
