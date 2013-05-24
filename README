@@ -507,6 +507,8 @@ Pytest
 
 This test case executes ``py.test`` test suite.
 
+Package ``pytest`` from http://pytest.org/ must be installed.
+
 Fields:
 
 ``pytest``: path pattern
@@ -515,6 +517,71 @@ Fields:
 Example::
 
     pytest: test/test_*.py
+
+Coverage
+--------
+
+This test case starts coverage of Python code.
+
+Package ``coverage`` from http://nedbatchelder.com/code/coverage/ must
+be installed.
+
+Fields:
+
+``coverage``: file name or ``None``
+    Path to the configuration file.
+
+``data_file``: file name
+    Where to save coverage data.
+
+``timid``: ``false`` or ``true`` (optional)
+    Use a simpler trace function.
+
+``branch``: ``false`` or ``true`` (optional)
+    Enable branch coverage.
+
+``source``: file paths of package names (optional)
+    Source files or packages to measure.
+
+``include``: file patterns
+    Files to measure.
+
+``omit``: file patterns
+    Files to omit.
+
+Example::
+
+    coverage:
+    source: pbbt
+    branch: true
+
+Coverage check
+--------------
+
+This test case stops coverage and reports measurement summary.
+
+Fields:
+
+``coverage-check``: float
+    Expected coverage percentage.
+
+Example::
+
+    coverage-check: 99.0
+
+Coverage report
+---------------
+
+This test case stops coverage and saves coverage report to a file.
+
+Fields:
+
+``coverage-report``: directory
+    Where to save the report.
+
+Example::
+
+    coverage-report: coverage
 
 
 Custom Test Types

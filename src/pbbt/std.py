@@ -5,7 +5,7 @@
 
 
 from .core import Test, Field, Record
-from .check import listof, oneof, dictof
+from .check import maybe, listof, oneof, dictof
 from .load import locate
 import sys
 import os, os.path
@@ -925,5 +925,105 @@ class PytestCase(BaseCase):
             return
 
         self.ctl.passed()
+
+
+@Test
+class CoverageCase(BaseCase):
+    """Starts code coverage with ``coverage.py``."""
+
+    class Input:
+        coverage = Field(maybe(str),
+                hint="configuration file")
+        data_file = Field(str, default=None,
+                hint="data file to use")
+        timid = Field(bool, default=None,
+                hint="use simpler trace function")
+        branch = Field(bool, default=None,
+                hint="measure branch coverage")
+        source = Field(listof(str), default=None,
+                hint="list of file paths or package names")
+        include = Field(listof(str), default=None,
+                hint="patterns for files to measure")
+        omit = Field(listof(str), default=None,
+                hint="patterns for files to omit")
+
+    def check(self):
+        # Check if coverage.py is installed.
+        try:
+            import coverage
+        except ImportError:
+            self.ctl.failed("coverage.py is not installed")
+            return
+
+        # Check if coverage already started.
+        if '__coverage__' in self.state:
+            self.ctl.failed("coverage is already started")
+
+        # Start coverage.
+        self.state['__coverage__'] = coverage.coverage(
+                config_file=self.input.coverage or False,
+                data_file=self.input.data_file,
+                timid=self.input.timid,
+                branch=self.input.branch,
+                source=self.input.source,
+                include=self.input.include,
+                omit=self.input.omit)
+        self.state['__coverage__'].start()
+
+
+@Test
+class CoverageCheckCase(BaseCase):
+    """Report coverage results."""
+
+    class Input:
+        coverage_check = Field(float,
+                hint="expected coverage in percent")
+
+    def check(self):
+        # Find coverage instance.
+        coverage = self.state.get('__coverage__')
+        if coverage is None:
+            self.ctl.failed("coverage has not been started")
+            return
+
+        # Stop coverage.
+        if coverage._started:
+            coverage.stop()
+
+        # Generate the report.
+        report_stream = StringIO.StringIO()
+        check = coverage.report(file=report_stream)
+        report = report_stream.getvalue()
+
+        # Display the report and complain if coverage is insufficient.
+        self.ui.literal(report)
+        if check < self.input.coverage_check:
+            self.ctl.failed("insufficient coverage: %s (expected: %s)"
+                            % (check, self.input.coverage_check))
+
+
+@Test
+class CoverageReportCase(BaseCase):
+    """Save coverage results in HTML."""
+
+    class Input:
+        coverage_report = Field(str,
+                hint="directory where to save the report")
+
+    def check(self):
+        # Find coverage instance.
+        coverage = self.state.get('__coverage__')
+        if coverage is None:
+            self.ctl.failed("coverage has not been started")
+            return
+
+        # Stop coverage.
+        if coverage._started:
+            coverage.stop()
+
+        # Save the report.
+        coverage.html_report(directory=self.input.coverage_report)
+        self.ui.notice("coverage report saved to %s"
+                       % os.path.join(self.input.coverage_report, 'index.html'))
 
 
