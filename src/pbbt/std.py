@@ -843,3 +843,39 @@ class DoctestCase(BaseCase):
         self.ctl.passed()
 
 
+@Test
+class UnittestCase(BaseCase):
+    """Runs ``unittest`` tests."""
+
+    class Input:
+        unittest = Field(str,
+                hint="file pattern")
+
+    def check(self):
+        import unittest
+
+        # Load tests.
+        dirname = os.path.dirname(self.input.unittest)
+        basename = os.path.basename(self.input.unittest)
+        loader = unittest.TestLoader()
+        test = loader.discover(dirname, basename)
+
+        # Run tests.
+        report_stream = StringIO.StringIO()
+        runner = unittest.TextTestRunner(report_stream)
+        result = runner.run(test)
+        report = report_stream.getvalue()
+
+        # Report failures.
+        if not result.wasSuccessful():
+            self.ctl.failed("some tests failed")
+            self.ui.literal(report)
+            if self.ctl.training:
+                reply = self.ui.choice(None, ('', "halt"), ('c', "continue"))
+                if reply == '':
+                    self.ctl.halt()
+            return
+
+        self.ctl.passed()
+
+

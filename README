@@ -480,12 +480,26 @@ This test case executes ``doctest`` on a set of files.
 
 Fields:
 
-``doctest``: path patterns
+``doctest``: path pattern
     Files with doctest sessions.
 
 Example::
 
     doctest: test/test_*.rst
+
+Unittest
+--------
+
+This test case executes ``unittest`` test suite.
+
+Fields:
+
+``unittest``: path pattern
+    Files with unittest tests.
+
+Example::
+
+    unittest: test/test_*.py
 
 
 Custom Test Types
