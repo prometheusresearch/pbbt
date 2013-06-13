@@ -16,6 +16,7 @@ import StringIO
 import subprocess
 import traceback
 import difflib
+import shlex
 
 
 def is_attribute(text, attr_re=re.compile(r'^[A-Za-z_][0-9A-Za-z_]*$')):
@@ -664,7 +665,11 @@ class ShellCase(MatchCase):
         # Prepare the command.
         command = self.input.sh
         if isinstance(command, str):
-            command = command.split()
+            try:
+                command = shlex.split(command)
+            except ValueError:
+                # Let `Popen` complain about it.
+                command = [command]
         environ = None
         if self.input.environ:
             environ = os.environ.copy()
