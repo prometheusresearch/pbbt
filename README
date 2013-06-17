@@ -934,7 +934,7 @@ The following options are available:
 PBBT can also read configuration from the following files:
 
 ``setup.cfg``
-    This file is in INI format with  PBBT settings defined in section
+    This file is in INI format with PBBT settings defined in section
     ``[pbbt]``.  The following parameters are recognized: ``extend``,
     ``input``, ``output``, ``define``, ``suite``, ``train``, ``purge``,
     ``max_errors``, ``quiet``.
@@ -943,6 +943,13 @@ PBBT can also read configuration from the following files:
     This file must be a YAML file with the following keys: ``extend``,
     ``input``, ``output``, ``define``, ``suite``, ``train``, ``purge``,
     ``max-errors``, ``quiet``.
+
+PBBT can also be executed as a Distutils command::
+
+    python setup.py pbbt
+
+In this case, PBBT configuration could be specified in ``setup.cfg``
+or via command-line parameters.
 
 
 API Reference

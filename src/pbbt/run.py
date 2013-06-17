@@ -33,6 +33,7 @@ def module(text):
     if not re.match(r'^[A-Za-z_][0-9A-Za-z_]*'
                     r'(?:\.[A-Za-z_][0-9A-Za-z_]*)*', text):
         raise ValueError("invalid module or file name: %r" % text)
+    return text
 
 
 DESCRIPTION = """\
@@ -109,7 +110,7 @@ def main():
         setup_cfg.read('setup.cfg')
         if setup_cfg.has_option('pbbt', 'extend'):
             lines = setup_cfg.get('pbbt', 'extend')
-            extend.extend(lines.split())
+            extend.extend(module(line) for line in lines.split())
         if setup_cfg.has_option('pbbt', 'input'):
             input = setup_cfg.get('pbbt', 'input')
         if setup_cfg.has_option('pbbt', 'output'):

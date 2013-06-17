@@ -37,6 +37,9 @@ ENTRY_POINTS = {
     'console_scripts': [
         'pbbt = pbbt:main',
     ],
+    'distutils.commands': [
+        'pbbt = pbbt.setup:pbbt',
+    ],
 }
 USE_2TO3 = True
 
