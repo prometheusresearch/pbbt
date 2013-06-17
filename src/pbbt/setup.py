@@ -16,7 +16,6 @@ class pbbt(Command):
     user_options = [
             ('input', 'i', "file with input data"),
             ('output', 'o', "file with output data"),
-            ('quiet', 'q', "display warnings and errors only"),
             ('train', 'T', "run tests in training mode"),
             ('purge', 'P', "purge stale output data"),
             ('max-errors', 'M', "halt after N errors"),
@@ -24,12 +23,11 @@ class pbbt(Command):
             ('extend', 'E', "load an extension"),
             ('suite', 'S', "run a specific test suite"),
     ]
-    boolean_options = ['quiet', 'train', 'purge']
+    boolean_options = ['train', 'purge']
 
     def initialize_options(self):
         self.input = None
         self.output = None
-        self.quiet = False
         self.train = False
         self.purge = False
         self.max_errors = None
@@ -78,8 +76,8 @@ class pbbt(Command):
                    training=self.train,
                    purging=self.purge,
                    max_errors=self.max_errors,
-                   quiet=self.quiet)
+                   quiet=not self.verbose)
         if exit != 0:
-            raise DistutilsError()
+            raise DistutilsError("some tests failed")
 
 
