@@ -165,6 +165,7 @@ def main():
 
     # Parse command-line parameters.
     args = parser.parse_args()
+    extend.extend(args.extend)
     if args.input:
         input = args.input
     if args.output:
