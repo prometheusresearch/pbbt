@@ -677,6 +677,7 @@ class ShellCase(MatchCase):
         # Execute the command.
         try:
             proc = subprocess.Popen(command,
+                                    stdin=subprocess.PIPE,
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT,
                                     cwd=self.input.cd,
