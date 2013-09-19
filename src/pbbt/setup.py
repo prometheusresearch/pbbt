@@ -7,6 +7,7 @@
 from distutils.cmd import Command
 from distutils.errors import DistutilsError, DistutilsOptionError
 from .run import variable, module, run
+import os
 
 
 class pbbt(Command):
