@@ -9,7 +9,7 @@ import sys
 
 
 NAME = "pbbt"
-VERSION = "0.1.2"
+VERSION = "0.1.3"
 DESCRIPTION = """Pluggable Black-Box Testing toolkit"""
 LONG_DESCRIPTION = open('README', 'r').read()
 AUTHOR = """Kirill Simonov (Prometheus Research, LLC)"""

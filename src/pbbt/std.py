@@ -556,7 +556,7 @@ class PythonCase(MatchCase):
         filename = self.input.py_as_filename
         if filename is not None:
             try:
-                stream = open(filename, 'rb')
+                stream = open(filename)
                 source = stream.read()
                 stream.close()
             except IOError:
@@ -715,7 +715,7 @@ class WriteToFileCase(BaseCase):
                 hint="file content")
 
     def check(self):
-        stream = open(self.input.write, 'wb')
+        stream = open(self.input.write, 'w')
         stream.write(self.input.data)
         stream.close()
 
@@ -738,7 +738,7 @@ class ReadFromFileCase(MatchCase):
         if not os.path.exists(self.input.read):
             self.ui.warning("missing file %r" % self.input.read)
             return
-        stream = open(self.input.read, 'rb')
+        stream = open(self.input.read)
         data = stream.read()
         stream.close()
         return self.Output(self.input.read, data)
