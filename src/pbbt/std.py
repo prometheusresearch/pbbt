@@ -942,6 +942,8 @@ class CoverageCase(BaseCase):
                 hint="configuration file")
         data_file = Field(str, default=None,
                 hint="data file to use")
+        auto_data = Field(bool, default=False,
+                hint="save coverage data")
         timid = Field(bool, default=None,
                 hint="use simpler trace function")
         branch = Field(bool, default=None,
@@ -969,6 +971,7 @@ class CoverageCase(BaseCase):
         self.state['__coverage__'] = coverage.coverage(
                 config_file=self.input.coverage or False,
                 data_file=self.input.data_file,
+                auto_data=self.input.auto_data,
                 timid=self.input.timid,
                 branch=self.input.branch,
                 source=self.input.source,
@@ -995,6 +998,9 @@ class CoverageCheckCase(BaseCase):
         # Stop coverage.
         if coverage._started:
             coverage.stop()
+        if coverage.auto_data:
+            coverage.save()
+            coverage.combine()
 
         # Generate the report.
         report_stream = StringIO.StringIO()
@@ -1026,6 +1032,9 @@ class CoverageReportCase(BaseCase):
         # Stop coverage.
         if coverage._started:
             coverage.stop()
+        if coverage.auto_data:
+            coverage.save()
+            coverage.combine()
 
         # Save the report.
         coverage.html_report(directory=self.input.coverage_report)
