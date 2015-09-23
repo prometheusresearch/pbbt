@@ -998,7 +998,8 @@ class CoverageCheckCase(BaseCase):
         # Stop coverage.
         if coverage._started:
             coverage.stop()
-        if coverage.auto_data:
+        if getattr(coverage, 'auto_data', None) or \
+           getattr(coverage, '_auto_data', None):
             coverage.save()
             coverage.combine()
 
@@ -1032,7 +1033,8 @@ class CoverageReportCase(BaseCase):
         # Stop coverage.
         if coverage._started:
             coverage.stop()
-        if coverage.auto_data:
+        if getattr(coverage, 'auto_data', None) or \
+           getattr(coverage, '_auto_data', None):
             coverage.save()
             coverage.combine()
 
