@@ -190,7 +190,7 @@ def main():
     # Load extensions.
     for path in extend:
         if os.path.isfile(path):
-            exec open(path) in {}
+            exec open(path).read() in {}
         else:
             __import__(path)
 
