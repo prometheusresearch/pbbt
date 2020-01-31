@@ -15,7 +15,7 @@ LONG_DESCRIPTION = open('README', 'r').read()
 AUTHOR = """Kirill Simonov (Prometheus Research, LLC)"""
 AUTHOR_EMAIL = "xi@resolvent.net"
 LICENSE = "MIT"
-URL = "http://bitbucket.org/prometheus/pbbt"
+URL = "https://github.com/prometheusresearch/pbbt"
 DOWNLOAD_URL = "http://pypi.python.org/pypi/pbbt"
 CLASSIFIERS = [
     "Development Status :: 2 - Pre-Alpha",

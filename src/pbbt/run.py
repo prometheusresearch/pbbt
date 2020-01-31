@@ -40,7 +40,7 @@ DESCRIPTION = """\
 pbbt is a pluggable black-box testing harness;
 for more information, see:
 
-    http://bitbucket.org/prometheus/pbbt
+    https://github.com/prometheusresearch/pbbt
 """
 
 
