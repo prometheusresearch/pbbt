@@ -12,7 +12,7 @@ import os, os.path
 import glob
 import shutil
 import re
-import StringIO
+import io
 import subprocess
 import traceback
 import difflib
@@ -125,7 +125,7 @@ class MatchCase(BaseCase):
             if 'ignore' in mapping and isinstance(mapping['ignore'], str):
                 try:
                     re.compile(mapping['ignore'], re.X|re.M)
-                except re.error, exc:
+                except re.error as exc:
                     raise ValueError("invalid regular expression: %s" % exc)
             return super(MatchCase.Input, cls).__load__(mapping)
 
@@ -570,8 +570,8 @@ class PythonCase(MatchCase):
         old_stdin = sys.stdin
         old_stdout = sys.stdout
         old_stderr = sys.stderr
-        sys.stdin = StringIO.StringIO(self.input.stdin)
-        sys.stdout = StringIO.StringIO()
+        sys.stdin = io.StringIO(self.input.stdin)
+        sys.stdout = io.StringIO()
         sys.stderr = sys.stdout
         context = self.state.get('__py__', {}).copy()
         try:
@@ -591,7 +591,7 @@ class PythonCase(MatchCase):
                     if output is not None:
                         sys.stdout.write(repr(output)+"\n")
                 else:
-                    exec code in context
+                    exec(code, context)
             except:
                 exc_info = sys.exc_info()
                 if self.input.except_ is not None and \
@@ -683,7 +683,7 @@ class ShellCase(MatchCase):
                                     cwd=self.input.cd,
                                     env=environ)
             stdout, stderr = proc.communicate(self.input.stdin)
-        except OSError, exc:
+        except OSError as exc:
             self.ui.literal(str(exc))
             self.ui.warning("failed to execute the process")
             return
@@ -816,7 +816,7 @@ class DoctestCase(BaseCase):
         import doctest
         parser = doctest.DocTestParser()
         runner = doctest.DocTestRunner(verbose=False, optionflags=0)
-        report_stream = StringIO.StringIO()
+        report_stream = io.StringIO()
 
         # Run all tests.
         for path in paths:
@@ -864,7 +864,7 @@ class UnittestCase(BaseCase):
         test = loader.discover(dirname, basename)
 
         # Run tests.
-        report_stream = StringIO.StringIO()
+        report_stream = io.StringIO()
         runner = unittest.TextTestRunner(report_stream)
         result = runner.run(test)
         report = report_stream.getvalue()
@@ -910,7 +910,7 @@ class PytestCase(BaseCase):
         py._io.terminalwriter.get_terminal_width = lambda: 70
 
         # Redirect output to StringIO and run the test suite.
-        report_stream = StringIO.StringIO()
+        report_stream = io.StringIO()
         old_stdout = sys.stdout
         sys.stdout = report_stream
         result = pytest.main(paths+['-q'])
@@ -1006,7 +1006,7 @@ class CoverageCheckCase(BaseCase):
             coverage.combine()
 
         # Generate the report.
-        report_stream = StringIO.StringIO()
+        report_stream = io.StringIO()
         check = coverage.report(file=report_stream)
         report = report_stream.getvalue()
 

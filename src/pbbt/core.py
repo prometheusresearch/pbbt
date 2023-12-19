@@ -102,10 +102,8 @@ class RecordMetaclass(type):
         return type.__new__(mcls, name, bases, members)
 
 
-class Record(object):
+class Record(object, metaclass=RecordMetaclass):
     """Base class for test input/output data."""
-
-    __metaclass__ = RecordMetaclass
     __slots__ = ('__weakref__',)
     __owner__ = None                # test type which owns the record type
     __fields__ = ()                 # list of record fields
@@ -258,7 +256,7 @@ class Record(object):
 
 def Test(cls):
     """Registers a test type."""
-    assert isinstance(cls, types.TypeType), "a test type must be a class"
+    assert isinstance(cls, type), "a test type must be a class"
 
     # Convert `Input` and `Output` definitions to `Record` subclasses.
     for name in ['Input', 'Output']:
