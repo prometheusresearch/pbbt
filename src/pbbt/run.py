@@ -8,7 +8,7 @@ from .ctl import Control
 import re
 import argparse
 import os, os.path
-import ConfigParser
+import configparser
 import yaml
 
 
@@ -106,7 +106,7 @@ def main():
 
     # Load configuration from setup.cfg.
     if os.path.exists('setup.cfg'):
-        setup_cfg = ConfigParser.SafeConfigParser()
+        setup_cfg = configparser.SafeConfigParser()
         setup_cfg.read('setup.cfg')
         if setup_cfg.has_option('pbbt', 'extend'):
             lines = setup_cfg.get('pbbt', 'extend')
@@ -134,8 +134,8 @@ def main():
     if os.path.exists('pbbt.yaml'):
         try:
             pbbt_cfg = yaml.safe_load(open('pbbt.yaml'))
-        except yaml.YAMLError, error:
-            print str(error)
+        except yaml.YAMLError as error:
+            print(str(error))
             return "pbbt: error: ill-formed configuration file: pbbt.yaml"
         if pbbt_cfg is None:
             pbbt_cfg = {}
@@ -190,7 +190,7 @@ def main():
     # Load extensions.
     for path in extend:
         if os.path.isfile(path):
-            exec open(path).read() in {}
+            exec(open(path).read(), {})
         else:
             __import__(path)
 

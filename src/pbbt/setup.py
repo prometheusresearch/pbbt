@@ -66,7 +66,7 @@ class pbbt(Command):
         # Load extensions.
         for path in self.extend:
             if os.path.isfile(path):
-                exec open(path) in {}
+                exec(open(path), {})
             else:
                 __import__(path)
 

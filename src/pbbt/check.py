@@ -131,7 +131,7 @@ class ExceptionInfo(object):
         self.value = value
         self.traceback = traceback
 
-    def __nonzero__(self):
+    def __bool__(self):
         return (self.type is not None)
 
     def __str__(self):

@@ -103,12 +103,12 @@ class TestLoader(BaseYAMLLoader):
         # Generate a nicer error message when a test record could not be found.
         if self.expect_record:
             if not (isinstance(node, yaml.MappingNode) and
-                    node.tag == u"tag:yaml.org,2002:map"):
+                    node.tag == "tag:yaml.org,2002:map"):
                 raise yaml.constructor.ConstructorError(None, None,
                         "expected a test record", node.start_mark)
         if self.expect_record_list:
             if not (isinstance(node, yaml.SequenceNode) and
-                    node.tag == u"tag:yaml.org,2002:seq"):
+                    node.tag == "tag:yaml.org,2002:seq"):
                 raise yaml.constructor.ConstructorError(None, None,
                         "expected a sequence of test records", node.start_mark)
 
@@ -135,7 +135,7 @@ class TestLoader(BaseYAMLLoader):
 
         # Construct a list of test records.
         if not (isinstance(node, yaml.SequenceNode) and
-                node.tag == u"tag:yaml.org,2002:seq"):
+                node.tag == "tag:yaml.org,2002:seq"):
             raise yaml.constructor.ConstructorError(None, None,
                     "expected a sequence of test records", node.start_mark)
         self.expect_record = True
@@ -155,7 +155,7 @@ class TestLoader(BaseYAMLLoader):
 
         # Check if we got a correct node type.
         if not (isinstance(node, yaml.MappingNode) and
-                node.tag == u"tag:yaml.org,2002:map"):
+                node.tag == "tag:yaml.org,2002:map"):
             raise yaml.constructor.ConstructorError(None, None,
                     "expected a test record", node.start_mark)
 
@@ -214,7 +214,7 @@ class TestLoader(BaseYAMLLoader):
         # Generate a record object.
         try:
             record = detected_record_type.__load__(mapping)
-        except ValueError, exc:
+        except ValueError as exc:
             raise yaml.constructor.ConstructorError(None, None,
                     str(exc), node.start_mark)
 
@@ -242,16 +242,16 @@ class TestLoader(BaseYAMLLoader):
 
 # Register custom constructors.
 TestLoader.add_constructor(
-        u'tag:yaml.org,2002:str', TestLoader.construct_yaml_str)
+        'tag:yaml.org,2002:str', TestLoader.construct_yaml_str)
 TestLoader.add_constructor(
-        u'tag:yaml.org,2002:seq', TestLoader.construct_yaml_seq)
+        'tag:yaml.org,2002:seq', TestLoader.construct_yaml_seq)
 TestLoader.add_constructor(
-        u'tag:yaml.org,2002:map', TestLoader.construct_yaml_map)
+        'tag:yaml.org,2002:map', TestLoader.construct_yaml_map)
 TestLoader.add_constructor(
-        u'!substitute', TestLoader.construct_substitute)
+        '!substitute', TestLoader.construct_substitute)
 # Register a resolver for ``!substitute``.
 TestLoader.add_implicit_resolver(
-        u'!substitute', TestLoader.substitute_re, [u'$'])
+        '!substitute', TestLoader.substitute_re, ['$'])
 
 
 class TestDumper(BaseYAMLDumper):
@@ -296,19 +296,19 @@ class TestDumper(BaseYAMLDumper):
         style = None
         if data.endswith('\n'):
             style = '|'
-        tag = u'tag:yaml.org,2002:str'
-        if not isinstance(data, unicode):
+        tag = 'tag:yaml.org,2002:str'
+        if not isinstance(data, str):
             try:
                 data = data.decode('utf-8')
             except UnicodeDecodeError:
                 data = data.encode('base64')
-                tag = u'tag:yaml.org,2002:binary'
+                tag = 'tag:yaml.org,2002:binary'
                 style = '|'
         return self.represent_scalar(tag, data, style=style)
 
     def represent_record(self, data):
         mapping = data.__dump__()
-        return self.represent_mapping(u'tag:yaml.org,2002:map', mapping,
+        return self.represent_mapping('tag:yaml.org,2002:map', mapping,
                                       flow_style=False)
 
 
@@ -319,7 +319,7 @@ TestDumper.add_multi_representer(
         Record, TestDumper.represent_record)
 # Register a resolver for ``!substitute``.
 TestDumper.add_implicit_resolver(
-        u'!substitute', TestLoader.substitute_re, [u'$'])
+        '!substitute', TestLoader.substitute_re, ['$'])
 
 
 def load(filename, record_types, substitutes={}):
