@@ -106,7 +106,7 @@ def main():
 
     # Load configuration from setup.cfg.
     if os.path.exists('setup.cfg'):
-        setup_cfg = configparser.SafeConfigParser()
+        setup_cfg = configparser.RawConfigParser()
         setup_cfg.read('setup.cfg')
         if setup_cfg.has_option('pbbt', 'extend'):
             lines = setup_cfg.get('pbbt', 'extend')
